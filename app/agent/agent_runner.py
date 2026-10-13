@@ -56,7 +56,8 @@ def run_agent(user_message: str):
 
 if __name__ == "__main__":
     result = run_agent(
-        "Please check order ORD-1001."
+        "What is the carrier and tracking number for order ORD-1001?"
     )
 
-    print(result)
+    print("Final answer:", result["content"])
+    print("Tool results:", result.get("tool_results"))

@@ -31,6 +31,31 @@ GET_ORDER_TOOL = {
     },
 }
 
+
+GET_SHIPPING_STATUS_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_shipping_status",
+        "description": (
+            "Look up shipping details for an order, "
+            "including shipping status, carrier, "
+            "and tracking number. "
+            "Use this when customers ask about delivery or tracking."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "order_id": {
+                    "type": "string",
+                    "description": "Order ID such as ORD-1001",
+                }
+            },
+            "required": ["order_id"],
+        },
+    },
+}
+
+
 def request_tool_call(user_message: str):
     response = client.chat.completions.create(
         model=os.getenv("DEEPSEEK_MODEL", "deepseek-flash"),
@@ -38,9 +63,12 @@ def request_tool_call(user_message: str):
             {
                 "role": "system",
                 "content": (
-                    "You are an e-commerce support assistant. "
-                    "Use get_order when a customer asks about an order. "
-                    "Never invent order or shipping details."
+                    "You are an e-commerce customer support assistant. "
+                    "Use get_order for basic order information such as "
+                    "order status and total amount. "
+                    "Use get_shipping_status for shipping details, "
+                    "tracking numbers, carriers, and delivery questions. "
+                    "Never invent order or shipping information."
                 ),
             },
             {
@@ -48,7 +76,9 @@ def request_tool_call(user_message: str):
                 "content": user_message,
             },
         ],
-        tools=[GET_ORDER_TOOL],
+        tools=[GET_ORDER_TOOL,
+               GET_SHIPPING_STATUS_TOOL,
+        ],
         tool_choice="auto",
     )
 
@@ -92,9 +122,22 @@ def generate_final_answer(
 
     return response.choices[0].message.content or ""
 
+def request_agent_step(messages: list[dict]):
+    response = client.chat.completions.create(
+        model=os.getenv("DEEPSEEK_MODEL","deepseek-flash"),
+        messages=messages,
+        tools=[
+            GET_ORDER_TOOL,
+            GET_SHIPPING_STATUS_TOOL,
+        ],
+        tool_choice="auto",
+    )
+
+    return response.choices[0].message
+
 if __name__ == "__main__":
     message = request_tool_call(
-        "Please check the shipping status of order ORD-1001."
+        "What is the tracking number and carrier for order ORD-1001?"
     )
 
     if message.tool_calls:

@@ -1,21 +1,26 @@
-MOCK_ORDERS = {
-    "ORD-1001":{
-        "order_id": "ORD-1001",
-        "customer_id": "CUS-001",
-        "status": "shipped",
-        "total_amount": 89.99,
-        "currency": "USD",
-        "shipping_status": "in_transit",
-    },
-    "ORD-1002": {
-        "order_id": "ORD-1002",
-        "customer_id": "CUS-002",
-        "status": "paid",
-        "total_amount": 149.50,
-        "currency": "USD",
-        "shipping_status": "not_shipped",
-    },
-}
+from app.core.database import SessionLocal
+from app.repositories.order_repository import get_order_by_id
+from app.repositories.shipment_repository import get_shipment_by_order_id
+
 
 def get_order(order_id: str) -> dict | None:
-    return MOCK_ORDERS.get(order_id)
+    with SessionLocal() as db:
+        order = get_order_by_id(db, order_id)
+
+        if order is None:
+            return None
+
+        shipment = get_shipment_by_order_id(db, order_id)
+
+        return {
+            "order_id": order.order_id,
+            "customer_id": order.customer_id,
+            "status": order.status,
+            "total_amount": float(order.total_amount),
+            "currency": order.currency,
+            "shipping_status": (
+                shipment.shipping_status
+                if shipment is not None
+                else None
+            ),
+        }

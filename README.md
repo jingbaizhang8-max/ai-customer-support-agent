@@ -12,7 +12,7 @@ The agent can interpret customer requests, select registered tools, validate too
 ## Current Features
 
 - DeepSeek LLM Tool Calling
-- Order lookup using mock e-commerce data
+- Order lookup using PostgreSQL-backed demo data
 - Tool Registry with an explicit allowlist
 - Pydantic argument validation
 - JSON parsing and error handling
@@ -30,7 +30,7 @@ Agent Runner
     ↓
 Tool Registry + Pydantic Validation
     ↓
-Order Tool (Mock Data)
+Business Tools → Repositories → PostgreSQL
     ↓
 Tool Result
     ↓
@@ -43,6 +43,9 @@ DeepSeek Final Response
 - OpenAI Python SDK
 - Pydantic
 - pytest
+- PostgreSQL 17
+- SQLAlchemy ORM
+- psycopg
 
 ## Quick Start
 
@@ -68,7 +71,9 @@ This project is under active development.
 
 The current implementation supports multiple tools and multi-round agent execution using mock business data.
 
-Planned features include PostgreSQL, Shopify sandbox integration, multi-step agent workflows, policy RAG, human approval, audit logging, guardrails, and agent evaluation.
+Planned features include Shopify sandbox integration,
+customer authentication and authorization, policy RAG,
+human approval workflows, refund operations, and agent evaluation.
 
 No real payment or refund operations are performed.
 
@@ -85,7 +90,7 @@ The agent supports multiple business tools through a controlled execution harnes
 | `get_order` | Retrieve order information |
 | `get_shipping_status` | Retrieve shipping status, carrier, and tracking number |
 
-Both tools currently use mock e-commerce data.
+Both tools currently query demonstration data stored in PostgreSQL.
 
 ### Multi-Step Agent Loop
 
@@ -122,12 +127,67 @@ python -m app.agent.agent_loop
 python -m pytest -q
 ```
 
-Current test suite: 11 passing tests.
+Current test suite: 14 passing tests.
 
 ### Limitations
 
-The system currently uses mock order and shipping data.
+The system currently uses demonstration order and shipping data persisted in PostgreSQL.
 
-Customer authentication, order ownership authorization, persistent business records, real payment operations, and human approval workflows have not yet been implemented.
+Customer authentication, order ownership authorization,
+and real payment operations have not yet been implemented.
 
 The execution limits and duplicate detection are preliminary safeguards, not a complete production security system.
+
+
+
+## PostgreSQL Persistence
+
+The agent uses PostgreSQL to persist e-commerce order and shipping records.
+
+### Database Tables
+
+- `orders`: order ID, customer ID, order status, amount, currency
+- `shipments`: order ID, shipping status, carrier, tracking number
+
+The `shipments.order_id` column references `orders.order_id` through a foreign key.
+
+### Data Access Architecture
+
+Agent → Harness → Business Tools → Repositories → SQLAlchemy → PostgreSQL
+
+### Database Setup
+
+1. Install PostgreSQL and create a database named `ai_customer_support_db`.
+2. Copy `.env.example` to `.env` and configure the PostgreSQL connection.
+3. Initialize the tables:
+
+```powershell
+python -m app.core.init_db
+```
+
+4. Insert demonstration data:
+
+```powershell
+python -m app.core.seed_data
+```
+
+5. Run the Agent:
+
+```powershell
+python -m app.agent.agent_loop
+```
+
+### Testing
+
+```powershell
+python -m pytest -q
+```
+
+The unit tests use pytest fixtures and monkeypatch to isolate database access, so they do not require a running PostgreSQL server. Database environment configuration is still required by the current implementation.
+
+### Current Limitations
+
+- The database contains demonstration data, not real customer records.
+- Shopify integration is not yet implemented.
+- Customer authentication and order ownership authorization are not yet implemented.
+- Refund operations and human approval workflows are planned for later development.

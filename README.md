@@ -191,3 +191,70 @@ The unit tests use pytest fixtures and monkeypatch to isolate database access, s
 - Shopify integration is not yet implemented.
 - Customer authentication and order ownership authorization are not yet implemented.
 - Refund operations and human approval workflows are planned for later development.
+
+
+## Real E-Commerce Data Integration
+
+The project supports the Olist Brazilian E-Commerce Public Dataset,
+which contains anonymized historical e-commerce orders.
+
+### ETL Pipeline
+
+The ETL pipeline:
+
+1. Reads order and payment CSV files.
+2. Aggregates payment amounts by order ID using Decimal.
+3. Maps raw Olist fields to the PostgreSQL orders schema.
+4. Imports records in batches of 500.
+5. Uses PostgreSQL ON CONFLICT DO NOTHING to avoid duplicate inserts.
+6. Uses RETURNING to count successfully inserted records.
+
+### Data Import
+
+Download the Olist dataset and place the required CSV files in:
+
+`data/olist/`
+
+Required files:
+
+- `olist_orders_dataset.csv`
+- `olist_order_payments_dataset.csv`
+
+Preview transformed records:
+
+```powershell
+python -m app.etl.preview_olist
+```
+
+Import 10 records for testing:
+
+```powershell
+python -m app.etl.import_olist --limit 10
+```
+
+Import all available orders:
+
+```powershell
+python -m app.etl.import_olist
+```
+
+### Verified Results
+
+- 99,440 Olist orders imported into PostgreSQL
+- 2 existing demonstration orders preserved
+- Both legacy and 32-character Olist order IDs supported
+- DeepSeek Agent successfully queried a real Olist order
+- Both order and shipping tools executed successfully
+- 20 automated tests passing
+
+### Data Limitations
+
+Olist is a historical public dataset, not a live e-commerce system.
+
+The current ETL imports orders and payment totals. It does not
+import independent shipment records, carrier names, or tracking numbers.
+
+Duplicate orders are skipped rather than updated. Customer
+authentication and order ownership authorization are not yet implemented.
+
+The raw CSV files are excluded from Git.

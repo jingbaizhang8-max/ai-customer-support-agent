@@ -7,14 +7,14 @@ class GetOrderInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     order_id: str = Field(
-        pattern=r"^ORD-\d{4}$"
+        pattern=r"^(?:ORD-\d{4}|[0-9a-f]{32})$"
     )
 
 class GetShippingStatusInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     order_id: str = Field(
-        pattern=r"^ORD-\d{4}$"
+        pattern=r"^(?:ORD-\d{4}|[0-9a-f]{32})$"
     )
 
 

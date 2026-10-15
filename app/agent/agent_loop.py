@@ -106,8 +106,10 @@ def run_agent_loop(user_message: str) -> dict:
 
 if __name__ == "__main__":
     result = run_agent_loop(
-        "Check order ORD-1001. "
-        "If it has shipped, find its tracking number."
+        "请帮我查询订单 e481f51cbdc54678b7cc49136f2d6af7。"
+        "告诉我订单状态和金额。"
+        "如果没有物流记录，请明确说明没有物流详情，"
+        "不要编造承运商和运单号。"
     )
 
     print("Final result:", result["content"])

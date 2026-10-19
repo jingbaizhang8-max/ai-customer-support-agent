@@ -13,12 +13,32 @@ def run_agent_loop(user_message: str) -> dict:
         {
             "role": "system",
             "content": (
-                "You are an e-commerce support assistant. "
+                "You are an e-commerce customer support assistant. "
                 "Use tools to obtain order and shipping information. "
                 "For conditional requests, check the necessary "
                 "order information before deciding the next action. "
-                "Never invent order or shipping details."
+                "Never invent order or shipping details. "
+            
+                "Use search_refund_policy for return and refund policy questions. "
+                "The policy knowledge base contains a fictional demonstration "
+                "policy, not official Olist or real merchant rules. "
+            
+                "Never use this fictional policy to determine refund "
+                "eligibility for real Olist orders. "
+                "Never approve, promise, or execute a real refund. "
+            
+                "When search_refund_policy returns a result, inspect "
+                "data.status, not just the success flag. "
+                "Only treat status='retrieved' as a policy answer. "
+            
+                "If evidence is insufficient or the RAG service fails, "
+                "explain that the policy cannot be confirmed. "
+                "Never invent refund conditions, amounts, or deadlines. "
+            
+                "When explaining retrieved policy, cite the document source "
+                "and clearly state that the policy is fictional. "
             ),
+
         },
         {
             "role": "user",
@@ -104,12 +124,15 @@ def run_agent_loop(user_message: str) -> dict:
     }
 
 
+
 if __name__ == "__main__":
     result = run_agent_loop(
-        "请帮我查询订单 e481f51cbdc54678b7cc49136f2d6af7。"
-        "告诉我订单状态和金额。"
-        "如果没有物流记录，请明确说明没有物流详情，"
-        "不要编造承运商和运单号。"
+        "According to the fictional demo store's return policy, "
+        "how many calendar days after delivery can a customer "
+        "request a return? Is a refund guaranteed? "
+        "Please cite the source document. "
+        "Clearly state that this fictional policy does not "
+        "apply to real Olist orders."
     )
 
     print("Final result:", result["content"])

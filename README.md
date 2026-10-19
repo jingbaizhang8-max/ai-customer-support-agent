@@ -258,3 +258,73 @@ Duplicate orders are skipped rather than updated. Customer
 authentication and order ownership authorization are not yet implemented.
 
 The raw CSV files are excluded from Git.
+
+
+## RAG-Powered Refund Policy Tool
+
+The AI Customer Support Agent integrates with the separate
+RAG Knowledge Platform through an HTTP API.
+
+### Architecture
+
+Customer Request
+    → DeepSeek Agent
+    → Tool Registry
+    → search_refund_policy
+    → HTTP POST /ask
+    → RAG Knowledge Platform
+    → Policy Answer and Sources
+    → Agent Final Response
+
+### Available Tools
+
+- `get_order`: Query order information from PostgreSQL.
+- `get_shipping_status`: Query shipping information.
+- `search_refund_policy`: Retrieve return and refund policy
+  information from the RAG knowledge base.
+
+### Configuration
+
+Add these settings to `.env`:
+
+```dotenv
+RAG_API_BASE_URL=http://127.0.0.1:8000
+REFUND_POLICY_DOCUMENT_ID=your_uploaded_document_id
+```
+
+The RAG service must be running before executing policy
+queries. The document ID is configured by the application,
+not supplied by the LLM.
+
+### Policy Tool Behavior
+
+The policy tool returns structured statuses:
+
+- `retrieved`: A policy answer and sources were returned.
+- `insufficient_evidence`: No sufficient policy evidence.
+- `service_error`: The RAG service request failed.
+- `not_configured`: The policy document ID is missing.
+- `invalid_question`: The question is empty or whitespace.
+
+The Agent must inspect the tool's data status rather than
+relying only on the Tool Registry's success flag.
+
+### Safety Limitations
+
+The current refund policy is fictional demonstration data.
+
+It is NOT an official Olist policy or a real merchant policy.
+
+The Agent must not use the demo policy to approve real refunds
+or determine eligibility for real Olist orders.
+
+Real refund execution, authentication, authorization,
+and human approval workflows are not yet implemented.
+
+### Testing
+
+Policy tool tests cover successful retrieval,
+insufficient evidence, service errors, and rejection
+of unauthorized document ID overrides.
+
+The current automated test suite contains 24 tests.

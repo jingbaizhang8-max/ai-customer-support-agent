@@ -56,6 +56,35 @@ GET_SHIPPING_STATUS_TOOL = {
 }
 
 
+SEARCH_REFUND_POLICY_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "search_refund_policy",
+        "description": (
+            "Search the fictional demo store's return and refund policy "
+            "using the RAG knowledge base. "
+            "Use this tool for questions about return windows, "
+            "refund conditions, damaged items, and human review. "
+            "This policy is for demonstration only and must not be "
+            "treated as an official Olist or real merchant policy."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": (
+                        "The customer's return or refund policy question."
+                    ),
+                },
+            },
+            "required": ["question"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
 def request_tool_call(user_message: str):
     response = client.chat.completions.create(
         model=os.getenv("DEEPSEEK_MODEL", "deepseek-flash"),
@@ -78,6 +107,7 @@ def request_tool_call(user_message: str):
         ],
         tools=[GET_ORDER_TOOL,
                GET_SHIPPING_STATUS_TOOL,
+               SEARCH_REFUND_POLICY_TOOL,
         ],
         tool_choice="auto",
     )
@@ -129,6 +159,7 @@ def request_agent_step(messages: list[dict]):
         tools=[
             GET_ORDER_TOOL,
             GET_SHIPPING_STATUS_TOOL,
+            SEARCH_REFUND_POLICY_TOOL,
         ],
         tool_choice="auto",
     )

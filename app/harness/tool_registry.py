@@ -2,6 +2,7 @@ from pydantic import BaseModel, ConfigDict, Field,ValidationError
 
 from app.tools.order_tools import get_order
 from app.tools.shipping_tools import get_shipping_status
+from app.tools.policy_tools import search_refund_policy
 
 class GetOrderInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -17,6 +18,13 @@ class GetShippingStatusInput(BaseModel):
         pattern=r"^(?:ORD-\d{4}|[0-9a-f]{32})$"
     )
 
+class SearchRefundPolicyInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question: str =  Field(
+        min_length=1,
+        max_length=1000
+    )
 
 TOOL_REGISTRY = {
     "get_order": {
@@ -28,6 +36,11 @@ TOOL_REGISTRY = {
         "handler": get_shipping_status,
         "schema": GetShippingStatusInput,
     },
+
+    "search_refund_policy": {
+        "handler": search_refund_policy,
+        "schema": SearchRefundPolicyInput,
+    }
 }
 
 def execute_tool(tool_name: str, arguments: dict) -> dict:

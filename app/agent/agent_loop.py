@@ -8,7 +8,11 @@ from app.harness.tool_registry import execute_tool
 MAX_STEPS = 4
 MAX_TOOL_CALLS = 6
 
-def run_agent_loop(user_message: str) -> dict:
+def run_agent_loop(
+    user_message: str,
+    *,
+    authenticated_customer_id: str | None = None,
+) -> dict:
     messages = [
         {
             "role": "system",
@@ -103,6 +107,7 @@ def run_agent_loop(user_message: str) -> dict:
                     result = execute_tool(
                         tool_name,
                         arguments,
+                        authenticated_customer_id=authenticated_customer_id,
                     )
 
             messages.append({
@@ -125,14 +130,23 @@ def run_agent_loop(user_message: str) -> dict:
 
 
 
+# if __name__ == "__main__":
+#     result = run_agent_loop(
+#         "According to the fictional demo store's return policy, "
+#         "how many calendar days after delivery can a customer "
+#         "request a return? Is a refund guaranteed? "
+#         "Please cite the source document. "
+#         "Clearly state that this fictional policy does not "
+#         "apply to real Olist orders."
+#     )
+#
+#     print("Final result:", result["content"])
+#     print("Tool history:", result["tool_results"])
 if __name__ == "__main__":
     result = run_agent_loop(
-        "According to the fictional demo store's return policy, "
-        "how many calendar days after delivery can a customer "
-        "request a return? Is a refund guaranteed? "
-        "Please cite the source document. "
-        "Clearly state that this fictional policy does not "
-        "apply to real Olist orders."
+        "Please check the status and total amount "
+        "of order ORD-1001.",
+        authenticated_customer_id=None,
     )
 
     print("Final result:", result["content"])

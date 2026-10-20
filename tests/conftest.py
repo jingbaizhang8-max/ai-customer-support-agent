@@ -41,6 +41,16 @@ def mock_order_database(monkeypatch):
     def fake_get_order(db, order_id):
         return orders.get(order_id)
 
+    def fake_get_order_for_customer(db, order_id, customer_id):
+        order = orders.get(order_id)
+
+        if order is None:
+            return None
+
+        if order.customer_id != customer_id:
+            return None
+
+        return order
     def fake_get_shipment(db, order_id):
         return shipments.get(order_id)
 
@@ -63,4 +73,15 @@ def mock_order_database(monkeypatch):
     )
     monkeypatch.setattr(
         shipping_tools, "get_shipment_by_order_id", fake_get_shipment
+    )
+    monkeypatch.setattr(
+        order_tools,
+        "get_order_for_customer",
+        fake_get_order_for_customer,
+    )
+
+    monkeypatch.setattr(
+        shipping_tools,
+        "get_order_for_customer",
+        fake_get_order_for_customer,
     )

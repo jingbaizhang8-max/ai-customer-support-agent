@@ -30,7 +30,8 @@ def test_agent_executes_order_tool(monkeypatch):
     )
 
     result = agent_runner.run_agent(
-        "Where is order ORD-1001?"
+        "Where is order ORD-1001?",
+        authenticated_customer_id="CUS-001"
     )
 
     assert result["type"] == "answer"
@@ -89,7 +90,8 @@ def test_agent_rejects_invalid_json_arguments(monkeypatch):
     )
 
     result = agent_runner.run_agent(
-        "Check my order."
+        "Check my order.",
+        authenticated_customer_id="CUS-001"
     )
 
     assert result["tool_results"][0]["result"] == {

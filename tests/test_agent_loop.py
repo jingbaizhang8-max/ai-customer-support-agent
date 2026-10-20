@@ -59,7 +59,8 @@ def test_agent_executes_multiple_steps(monkeypatch):
     )
 
     result = agent_loop.run_agent_loop(
-        "Check ORD-1001. If shipped, find tracking."
+        "Check ORD-1001. If shipped, find tracking.",
+        authenticated_customer_id="CUS-001",
     )
 
     assert result["type"] == "answer"
@@ -107,7 +108,8 @@ def test_agent_stops_at_step_limit(monkeypatch):
     )
 
     result = agent_loop.run_agent_loop(
-        "Keep checking order ORD-1001."
+        "Keep checking order ORD-1001.",
+        authenticated_customer_id="CUS-001",
     )
 
     assert result["type"] == "step_limit_reached"
@@ -152,7 +154,8 @@ def test_agent_rejects_tool_calls_over_budget(monkeypatch):
     )
 
     result = agent_loop.run_agent_loop(
-        "Check my order and its shipping status."
+        "Check my order and its shipping status.",
+        authenticated_customer_id="CUS-001",
     )
 
     assert result["type"] == "tool_limit_reached"
@@ -182,10 +185,20 @@ def test_agent_detects_duplicate_tool_calls(monkeypatch):
     original_execute_tool = agent_loop.execute_tool
     execution_count = 0
 
-    def counted_execute_tool(tool_name, arguments):
+    def counted_execute_tool(
+            tool_name,
+            arguments,
+            *,
+            authenticated_customer_id=None,
+    ):
         nonlocal execution_count
         execution_count += 1
-        return original_execute_tool(tool_name, arguments)
+
+        return original_execute_tool(
+            tool_name,
+            arguments,
+            authenticated_customer_id=authenticated_customer_id,
+        )
 
     monkeypatch.setattr(
         agent_loop,
@@ -194,7 +207,8 @@ def test_agent_detects_duplicate_tool_calls(monkeypatch):
     )
 
     result = agent_loop.run_agent_loop(
-        "Check order ORD-1001."
+        "Check order ORD-1001.",
+        authenticated_customer_id="CUS-001"
     )
 
     assert result["type"] == "answer"

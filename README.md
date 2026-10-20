@@ -328,3 +328,58 @@ insufficient evidence, service errors, and rejection
 of unauthorized document ID overrides.
 
 The current automated test suite contains 24 tests.
+
+
+## Order Authorization and Access Control
+
+The project implements customer-level order ownership checks
+to reduce the risk of unauthorized order access (IDOR).
+
+### Authorization Flow
+
+1. The Agent receives the customer's request.
+2. A trusted application context supplies authenticated_customer_id.
+3. The LLM selects a tool and provides the order_id.
+4. The Tool Registry checks whether authentication is required.
+5. The business tool queries PostgreSQL using both order_id and customer_id.
+6. Unauthorized requests are denied without returning private order data.
+
+### Protected Tools
+
+- `get_order`: Requires an authenticated customer context.
+- `get_shipping_status`: Requires an authenticated customer context.
+- `search_refund_policy`: Does not require customer authentication
+  because it retrieves fictional public demonstration policy information.
+
+### Security Rules
+
+- Customer identity must not be supplied or overridden by the LLM.
+- Missing authentication returns `authentication_required`.
+- Unauthorized or nonexistent orders return `order_not_found`.
+- Pydantic rejects unexpected tool arguments.
+- Order ownership is checked before accessing shipping details.
+- Both single-round and multi-round Agent execution paths
+  pass the trusted customer context to the Tool Registry.
+
+### Authorization Testing
+
+Tests cover:
+
+- Missing customer authentication
+- Access to a customer's own order
+- Unauthorized access to another customer's order
+- Unauthorized access to shipping information
+- Rejection of LLM-provided customer identity overrides
+
+32 automated tests currently pass.
+
+### Current Limitations
+
+The project currently simulates authenticated customer identity
+for development and testing.
+
+Real login, session validation, JWT verification, and trusted
+HTTP authentication middleware have not yet been implemented.
+
+The current authorization logic must not be considered
+production-ready authentication.

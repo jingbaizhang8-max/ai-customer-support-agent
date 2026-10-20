@@ -4,7 +4,8 @@ from app.harness.tool_registry import execute_tool
 def test_get_order_success():
     result = execute_tool(
         "get_order",
-        {"order_id": "ORD-1001"}
+        {"order_id": "ORD-1001"},
+        authenticated_customer_id="CUS-001",
     )
 
     assert result["success"] is True
@@ -14,7 +15,8 @@ def test_get_order_success():
 def test_order_not_found():
     result = execute_tool(
         "get_order",
-        {"order_id": "ORD-9999"}
+        {"order_id": "ORD-9999"},
+        authenticated_customer_id="CUS-001",
     )
 
     assert result["success"] is False
@@ -27,7 +29,8 @@ def test_invalid_arguments():
         {
             "order_id": "ORD-1001",
             "admin": True
-        }
+        },
+        authenticated_customer_id="CUS-001",
     )
 
     assert result["success"] is False

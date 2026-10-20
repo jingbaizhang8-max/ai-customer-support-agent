@@ -3,7 +3,11 @@ import json
 from app.agent.llm_service import request_tool_call, generate_final_answer
 from app.harness.tool_registry import execute_tool
 
-def run_agent(user_message: str):
+def run_agent(
+    user_message: str,
+    *,
+    authenticated_customer_id: str | None = None,
+):
     message = request_tool_call(user_message)
 
     if not message.tool_calls:
@@ -33,6 +37,7 @@ def run_agent(user_message: str):
             tool_result = execute_tool(
                 tool_name,
                 arguments,
+                authenticated_customer_id=authenticated_customer_id,
             )
         results.append(
             {
@@ -56,7 +61,8 @@ def run_agent(user_message: str):
 
 if __name__ == "__main__":
     result = run_agent(
-        "What is the carrier and tracking number for order ORD-1001?"
+        "What is the carrier and tracking number for order ORD-1001?",
+        authenticated_customer_id="CUS-002",
     )
 
     print("Final answer:", result["content"])

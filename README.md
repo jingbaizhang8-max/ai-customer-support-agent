@@ -383,3 +383,126 @@ HTTP authentication middleware have not yet been implemented.
 
 The current authorization logic must not be considered
 production-ready authentication.
+
+## JWT Authentication and Secure Agent API
+
+### Overview
+
+The AI Customer Support Agent provides a FastAPI endpoint protected by JSON Web Token (JWT) authentication.
+
+The system validates the client's JWT before passing the authenticated customer identity to the Agent. Order and shipping tools then verify order ownership before returning private information.
+
+### API Endpoints
+
+| Method | Endpoint | Description | Authentication |
+|---|---|---|---|
+| GET | `/health` | Health check | Not required |
+| POST | `/agent/chat` | Run the customer support Agent | Bearer JWT required |
+
+### Authentication Flow
+
+1. The client sends an HTTP request containing a Bearer JWT.
+2. FastAPI extracts the token using `HTTPBearer`.
+3. PyJWT validates the signature and required claims.
+4. The verified `sub` claim identifies the authenticated customer.
+5. FastAPI passes this customer ID to the Agent.
+6. The Tool Registry validates tool arguments and authentication requirements.
+7. Order and shipping tools enforce customer ownership before accessing private order details.
+
+The system does not trust customer IDs supplied by the LLM or the user's message.
+
+### JWT Security
+
+JWT verification uses the HS256 algorithm and validates:
+
+- `sub`: Authenticated customer identity
+- `exp`: Token expiration time
+- `iat`: Token issuance time
+- `iss`: Expected token issuer
+- `aud`: Expected token audience
+- JWT digital signature
+
+Missing, expired, incorrectly signed, or otherwise invalid tokens are rejected with HTTP `401 Unauthorized`.
+
+### Environment Configuration
+
+Add the following variable to the local `.env` file:
+
+```dotenv
+JWT_SECRET_KEY=your_secure_random_secret
+```
+
+Generate a cryptographically secure random key for local development. Never commit the real secret or an active JWT to GitHub.
+
+The `.env.example` file contains only a placeholder value.
+
+### Running the API
+
+Start the FastAPI server:
+
+```bash
+python -m uvicorn app.main:app --reload --port 8001
+```
+
+Open the interactive Swagger documentation:
+
+http://127.0.0.1:8001/docs
+
+The RAG Knowledge Platform uses port 8000, while the Customer Support Agent API uses port 8001.
+
+### Example Chat Request
+
+**Endpoint:** `POST /agent/chat`
+
+**Authorization header:**
+
+```http
+Authorization: Bearer <valid_jwt>
+```
+
+**Request body:**
+
+```json
+{
+  "message": "Please check the status of order ORD-1001."
+}
+```
+
+A valid JWT is required. Private order information is returned only when the authenticated customer owns the requested order.
+
+### Automated Tests
+
+Run all tests:
+
+```bash
+python -m pytest -q
+```
+
+Run JWT authentication tests:
+
+```bash
+python -m pytest tests/test_auth_api.py -v
+```
+
+The authentication tests cover:
+
+- Missing JWT
+- Valid JWT and authenticated customer identity propagation
+- Different customer identities
+- Invalid JWT signature
+- Expired JWT
+- Incorrect issuer
+- Incorrect audience
+- Missing subject claim
+
+**Day 23 test results:** 40 tests passed, including 8 JWT authentication tests.
+
+### Security and Current Limitations
+
+- JWTs are generated locally for development and testing.
+- A real user registration and login system has not yet been implemented.
+- The current authentication implementation is intended for development and demonstration, not production deployment.
+- Order ownership is enforced in the application business logic.
+- Historical Olist order data is used for development and demonstration.
+- Refund policy documents are fictional examples and must not be treated as official policies for Olist customers.
+- Real refunds, production payment operations, and complete human approval workflows have not yet been implemented.

@@ -506,3 +506,116 @@ The authentication tests cover:
 - Historical Olist order data is used for development and demonstration.
 - Refund policy documents are fictional examples and must not be treated as official policies for Olist customers.
 - Real refunds, production payment operations, and complete human approval workflows have not yet been implemented.
+
+
+## Customer Support Ticket System
+
+### Overview
+
+The Ticket System enables authenticated customers to create and track customer support requests.
+
+Supported ticket types:
+
+- `refund_request`
+- `shipping_issue`
+- `general_inquiry`
+
+New tickets are created with the status `pending_review`. Creating a refund request does not execute an actual refund.
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/tickets` | Create a customer support ticket |
+| GET | `/tickets/{ticket_id}` | Retrieve an existing ticket |
+
+Both endpoints require JWT Bearer authentication.
+
+### Create a Ticket
+
+**Endpoint:** `POST /tickets`
+
+Required headers:
+
+```http
+Authorization: Bearer <valid_jwt>
+Idempotency-Key: <unique_request_key>
+```
+
+Example request:
+
+```json
+{
+  "order_id": "ORD-1001",
+  "ticket_type": "refund_request",
+  "description": "Item arrived damaged. I would like to request a refund.",
+  "confirmed": true
+}
+```
+
+The authenticated customer identity is extracted from the verified JWT.
+
+Before creating a ticket, the Repository verifies that the referenced order belongs to the authenticated customer.
+
+The `confirmed: true` field is required for submission. It is an API-level confirmation flag, not a complete human approval mechanism.
+
+### Idempotency
+
+Ticket creation uses an `Idempotency-Key` HTTP header.
+
+A PostgreSQL unique index on `(customer_id, idempotency_key)` prevents duplicate records for the same customer and request key.
+
+- Same key and identical request: return the existing ticket.
+- Same key and different request: reject with HTTP `409 Conflict`.
+- Unauthorized order: reject with HTTP `404 Not Found`.
+
+### Ticket Status
+
+Supported ticket statuses:
+
+- `pending_review`
+- `approved`
+- `rejected`
+- `closed`
+
+The current implementation creates tickets in `pending_review`. Human approval workflows and controlled status transitions are planned for later development.
+
+### Database
+
+The Ticket System uses PostgreSQL and SQLAlchemy.
+
+Main database table: `tickets`.
+
+A development migration script is provided for adding the idempotency column and unique index to an existing tickets table:
+
+```bash
+python -m scripts.add_ticket_idempotency
+```
+
+This script expects the `tickets` table to already exist. Database schema versioning with Alembic has not yet been implemented.
+
+### Testing
+
+Run all tests:
+
+```bash
+python -m pytest -q
+```
+
+Run the PostgreSQL smoke test:
+
+```bash
+python -m scripts.smoke_test_tickets
+```
+
+The smoke test creates temporary test data and cleans it up after execution.
+
+**Day 24 results:** 53 automated tests passed. The PostgreSQL smoke test also verified ticket persistence, ownership restrictions, and sequential idempotency behavior.
+
+### Current Limitations
+
+- Ticket creation is exposed through a JWT-protected API, not directly as an autonomous LLM write tool.
+- The Agent can look up existing tickets using `get_ticket`.
+- Human-in-the-loop approval and LangGraph workflow orchestration have not yet been implemented.
+- Creating a refund ticket does not issue a payment refund.
+- PostgreSQL concurrency behavior still requires dedicated integration testing.

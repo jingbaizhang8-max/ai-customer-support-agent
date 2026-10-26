@@ -85,6 +85,35 @@ SEARCH_REFUND_POLICY_TOOL = {
 }
 
 
+
+GET_TICKET_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_ticket",
+        "description": (
+            "Look up an existing customer support ticket "
+            "by its ticket ID. "
+            "Use this when a customer asks about the status "
+            "of an existing ticket. "
+            "Only the authenticated ticket owner can access it."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {
+                    "type": "string",
+                    "description": (
+                        "The UUID of an existing support ticket."
+                    ),
+                },
+            },
+            "required": ["ticket_id"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
 def request_tool_call(user_message: str):
     response = client.chat.completions.create(
         model=os.getenv("DEEPSEEK_MODEL", "deepseek-flash"),
@@ -108,6 +137,7 @@ def request_tool_call(user_message: str):
         tools=[GET_ORDER_TOOL,
                GET_SHIPPING_STATUS_TOOL,
                SEARCH_REFUND_POLICY_TOOL,
+               GET_TICKET_TOOL,
         ],
         tool_choice="auto",
     )
@@ -160,6 +190,7 @@ def request_agent_step(messages: list[dict]):
             GET_ORDER_TOOL,
             GET_SHIPPING_STATUS_TOOL,
             SEARCH_REFUND_POLICY_TOOL,
+            GET_TICKET_TOOL,
         ],
         tool_choice="auto",
     )

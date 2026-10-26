@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from app.api.agent import router as agent_router
-
+from app.api.tickets import router as tickets_router
 
 app = FastAPI(
     title="AI Customer Support Agent",
@@ -15,6 +15,11 @@ app.include_router(
     tags=["Agent"],
 )
 
+app.include_router(
+    tickets_router,
+    prefix="/tickets",
+    tags=["Tickets"],
+)
 
 @app.get("/health")
 def health_check():

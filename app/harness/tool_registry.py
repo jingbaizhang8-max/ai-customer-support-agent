@@ -3,6 +3,7 @@ from pydantic import BaseModel, ConfigDict, Field,ValidationError
 from app.tools.order_tools import get_order_for_authenticated_customer
 from app.tools.shipping_tools import get_shipping_status_for_authenticated_customer
 from app.tools.policy_tools import search_refund_policy
+from app.tools.ticket_tools import get_ticket_for_authenticated_customer
 
 class GetOrderInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -26,6 +27,17 @@ class SearchRefundPolicyInput(BaseModel):
         max_length=1000
     )
 
+class GetTicketInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ticket_id: str = Field(
+        pattern=(
+            r"^[0-9a-fA-F]{8}-"
+            r"(?:[0-9a-fA-F]{4}-){3}"
+            r"[0-9a-fA-F]{12}$"
+        )
+    )
+
 TOOL_REGISTRY = {
     "get_order": {
         "handler": get_order_for_authenticated_customer,
@@ -44,6 +56,14 @@ TOOL_REGISTRY = {
         "schema": SearchRefundPolicyInput,
         "requires_auth": False,
     },
+
+
+    "get_ticket": {
+        "handler": get_ticket_for_authenticated_customer,
+        "schema": GetTicketInput,
+        "requires_auth": True,
+    },
+
 }
 
 def execute_tool(
@@ -84,9 +104,14 @@ def execute_tool(
     result = tool["handler"](**call_args)
 
     if result is None:
+        error_code = (
+            "ticket_not_found"
+            if tool_name == "get_ticket"
+            else "order_not_found"
+        )
         return {
             "success": False,
-            "error": "order_not_found",
+            "error": error_code,
         }
 
     return {

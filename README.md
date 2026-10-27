@@ -619,3 +619,115 @@ The smoke test creates temporary test data and cleans it up after execution.
 - Human-in-the-loop approval and LangGraph workflow orchestration have not yet been implemented.
 - Creating a refund ticket does not issue a payment refund.
 - PostgreSQL concurrency behavior still requires dedicated integration testing.
+## Human-in-the-loop Ticket Review
+
+### Overview
+
+The AI Customer Support Agent supports a human review workflow for customer support tickets.
+
+Customers can submit refund requests through the Ticket API. These requests are initially stored with the status `pending_review`.
+
+Authorized reviewers can approve or reject pending tickets through a separate, JWT-protected review endpoint.
+
+**Approval does not execute an actual refund or payment transaction.**
+
+### Review API
+
+**Endpoint:** `POST /reviews/{ticket_id}`
+
+Authentication requires a reviewer JWT rather than a customer JWT.
+
+Example request:
+
+```json
+{
+  "decision": "approved",
+  "reason": "The request has been reviewed and approved."
+}
+```
+
+Supported decisions:
+
+- `approved`
+- `rejected`
+
+Only tickets with the status `pending_review` can be reviewed.
+
+### Reviewer Authentication
+
+Reviewer authentication is implemented separately from customer authentication.
+
+The reviewer API validates:
+
+- JWT signature using a dedicated reviewer secret
+- Token expiration
+- Issuer and audience
+- Required JWT claims
+- Reviewer role
+
+The reviewer identity is derived from the verified JWT and is not accepted from user-supplied request fields.
+
+Reviewer tokens are currently generated for development and testing. A production login system, reviewer account management and permission revocation are not yet implemented.
+
+### Atomic Review Transactions
+
+The review process uses SQLAlchemy and PostgreSQL transactions.
+
+The workflow:
+
+1. Lock the selected ticket using `SELECT ... FOR UPDATE`.
+2. Verify that the ticket status is `pending_review`.
+3. Update the ticket status to `approved` or `rejected`.
+4. Insert an audit record into `ticket_reviews`.
+5. Commit both changes in the same transaction.
+
+If an operation fails, the transaction is rolled back.
+
+A unique database constraint ensures that each ticket has at most one final review record.
+
+### Audit Records
+
+The `ticket_reviews` table stores:
+
+- Review ID
+- Ticket ID
+- Reviewer ID
+- Decision
+- Review reason
+- Review timestamp
+
+These records provide a basic audit trail for human decisions.
+
+### Testing
+
+Run all automated tests:
+
+```bash
+python -m pytest -q
+```
+
+Run PostgreSQL review smoke tests:
+
+```bash
+python -m scripts.smoke_test_reviews
+python -m scripts.smoke_test_review_concurrency
+python -m scripts.smoke_test_review_rollback
+```
+
+**Day 25 result: 62 automated tests passed.**
+
+Additional PostgreSQL smoke tests verified:
+
+- Successful approval
+- Audit record persistence
+- Duplicate review rejection
+- Concurrent review conflict handling
+- Transaction rollback after a simulated failure
+
+### Current Limitations
+
+- Reviewer tokens are development credentials, not production user accounts.
+- Reviewer permissions are based on verified JWT claims; production account and permission lifecycle management is not yet implemented.
+- Human decisions are submitted through the review API.
+- LangGraph-based workflow interruption and resumption have not yet been implemented.
+- The system does not execute real refunds or payment transactions.

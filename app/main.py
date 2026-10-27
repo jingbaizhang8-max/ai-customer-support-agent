@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.api.agent import router as agent_router
 from app.api.tickets import router as tickets_router
+from app.api.reviews import router as reviews_router
 
 app = FastAPI(
     title="AI Customer Support Agent",
@@ -19,6 +20,12 @@ app.include_router(
     tickets_router,
     prefix="/tickets",
     tags=["Tickets"],
+)
+
+app.include_router(
+    reviews_router,
+    prefix="/reviews",
+    tags=["Reviews"],
 )
 
 @app.get("/health")

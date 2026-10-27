@@ -1,3 +1,6 @@
+import os
+from app.graph.agent_graph import run_graph_agent
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -41,7 +44,19 @@ def chat_with_agent(
         request: AgentRequest,
         customer_id: str = Depends(get_authenticated_customer_id),
 ):
-    return run_agent_loop(
+
+    use_langgraph = (
+        os.getenv("USE_LANGGRAPH_AGENT", "false").lower()
+        == "true"
+    )
+
+    agent_function = (
+        run_graph_agent
+        if use_langgraph
+        else run_agent_loop
+    )
+
+    return agent_function(
         user_message=request.message,
         authenticated_customer_id=customer_id,
     )

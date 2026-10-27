@@ -731,3 +731,108 @@ Additional PostgreSQL smoke tests verified:
 - Human decisions are submitted through the review API.
 - LangGraph-based workflow interruption and resumption have not yet been implemented.
 - The system does not execute real refunds or payment transactions.
+
+## LangGraph Agent Orchestration
+
+### Overview
+
+The Customer Support Agent supports LangGraph-based workflow orchestration alongside the original Python Agent Loop.
+
+The LangGraph implementation separates LLM decision-making, tool execution, conditional routing, and execution limits into explicit graph nodes.
+
+### Architecture
+
+```text
+FastAPI /agent/chat
+        |
+   JWT Authentication
+        |
+   Feature Flag
+        |
+        +-- Original Agent Loop
+        |
+        +-- LangGraph Agent
+                |
+              LLM Node
+                |
+           Conditional Edge
+                |
+             Tool Node
+                |
+          Tool Registry / Harness
+                |
+          PostgreSQL / RAG
+```
+
+The existing Harness continues to enforce tool allowlisting, Pydantic argument validation, authentication requirements, and business authorization.
+
+### LangGraph Components
+
+- **State:** Stores conversation messages, tool history, pending tool calls, execution counters, and results.
+- **LLM Node:** Calls DeepSeek and handles LLM service errors.
+- **Tool Node:** Executes approved tools through the existing Tool Registry.
+- **Conditional Edges:** Route execution between nodes.
+- **Limit Node:** Produces an explicit result when the maximum execution steps are reached.
+
+### Execution Safety
+
+The LangGraph Agent implements:
+
+- Maximum LLM execution steps
+- Maximum tool calls
+- Duplicate tool call detection
+- Tool argument JSON validation
+- Tool call/result message pairing
+- Authenticated customer identity propagation
+- LLM service error handling
+- Tool execution history preservation
+
+### Feature Flag
+
+The API supports switching between the original Agent Loop and LangGraph.
+
+Configure:
+
+```dotenv
+USE_LANGGRAPH_AGENT=false
+```
+
+Set to `true` to enable the LangGraph implementation.
+
+The default is `false`, allowing controlled migration and rollback.
+
+### Testing
+
+Run automated tests:
+
+```bash
+python -m pytest -q
+```
+
+Run the real LangGraph integration test:
+
+```bash
+python -m scripts.smoke_test_langgraph_api
+```
+
+The integration test requires configured DeepSeek credentials, a local PostgreSQL database, and the development order `ORD-1001`.
+
+**Day 26 results: 80 automated tests passed.**
+
+A real integration test also verified:
+
+- FastAPI request handling
+- JWT authentication
+- LangGraph execution
+- Tool Registry integration
+- PostgreSQL order retrieval
+- DeepSeek answer generation
+
+### Current Limitations
+
+- LangGraph Checkpointer persistence has not yet been implemented.
+- Cross-request conversation memory is not yet supported.
+- Sliding-window context management and token budgeting are planned.
+- LangGraph workflow interruption and resumption for human approval are planned for later development.
+- The original Agent Loop remains available as a fallback.
+- Production authentication, monitoring, and operational safeguards require further development.

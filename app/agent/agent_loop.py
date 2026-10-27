@@ -1,4 +1,3 @@
-
 import json
 
 from app.agent.llm_service import request_agent_step
@@ -8,12 +7,8 @@ from app.harness.tool_registry import execute_tool
 MAX_STEPS = 4
 MAX_TOOL_CALLS = 6
 
-def run_agent_loop(
-    user_message: str,
-    *,
-    authenticated_customer_id: str | None = None,
-) -> dict:
-    messages = [
+def build_initial_messages(user_message: str) -> list[dict]:
+    return  [
         {
             "role": "system",
             "content": (
@@ -22,23 +17,23 @@ def run_agent_loop(
                 "For conditional requests, check the necessary "
                 "order information before deciding the next action. "
                 "Never invent order or shipping details. "
-            
+
                 "Use search_refund_policy for return and refund policy questions. "
                 "The policy knowledge base contains a fictional demonstration "
                 "policy, not official Olist or real merchant rules. "
-            
+
                 "Never use this fictional policy to determine refund "
                 "eligibility for real Olist orders. "
                 "Never approve, promise, or execute a real refund. "
-            
+
                 "When search_refund_policy returns a result, inspect "
                 "data.status, not just the success flag. "
                 "Only treat status='retrieved' as a policy answer. "
-            
+
                 "If evidence is insufficient or the RAG service fails, "
                 "explain that the policy cannot be confirmed. "
                 "Never invent refund conditions, amounts, or deadlines. "
-            
+
                 "When explaining retrieved policy, cite the document source "
                 "and clearly state that the policy is fictional. "
             ),
@@ -49,6 +44,13 @@ def run_agent_loop(
             "content": user_message,
         },
     ]
+
+def run_agent_loop(
+    user_message: str,
+    *,
+    authenticated_customer_id: str | None = None,
+) -> dict:
+    messages = build_initial_messages(user_message)
 
     tool_history = []
     seen_tool_calls = set()

@@ -4,6 +4,8 @@ import json
 from typing import TypedDict
 
 from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import InMemorySaver
+from uuid import UUID
 
 from app.agent.llm_service import request_agent_step
 from app.agent.agent_loop import (
@@ -35,6 +37,9 @@ def llm_node(state: AgentState) -> dict:
     try:
         message = request_agent_step(state["messages"])
     except OpenAIError:
+        # print("LLM 错误类型：", type(exc).__name__)
+        # print("HTTP 状态码：", getattr(exc, "status_code", None))
+        # print("底层原因：", repr(exc.__cause__))
         return {
             "pending_calls": [],
             **finish(
@@ -213,12 +218,15 @@ builder.add_edge("limit", END)
 
 agent_graph = builder.compile()
 
-
+memory_agent_graph = builder.compile(
+    checkpointer=InMemorySaver()
+)
 
 def run_graph_agent(
     user_message: str,
     *,
     authenticated_customer_id: str | None = None,
+    conversation_id: str | None = None,
 ) -> dict:
 
     if (
@@ -227,8 +235,55 @@ def run_graph_agent(
     ):
         raise ValueError("invalid_user_message")
 
+    use_memory = conversation_id is not None
+
+    config = None
+
+    if use_memory:
+        if not authenticated_customer_id:
+            raise ValueError("authentication_required")
+
+        try:
+            conversation_id = str(UUID(conversation_id))
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError("invalid_conversation_id")
+
+        thread_id = (
+            f"customer:{authenticated_customer_id}"
+            f":conversation:{conversation_id}"
+        )
+
+        config = {
+            "configurable": {
+                "thread_id": thread_id
+            }
+        }
+
+        snapshot = memory_agent_graph.get_state(config)
+
+        previous_messages = (
+            snapshot.values.get("messages", [])
+            if snapshot is not None
+            else []
+        )
+
+        if previous_messages:
+            messages = list(previous_messages) + [
+                {
+                    "role": "user",
+                    "content": user_message,
+                }
+            ]
+        else:
+            messages = build_initial_messages(user_message)
+
+    else:
+        messages = build_initial_messages(user_message)
+
+
+
     initial_state: AgentState = {
-        "messages": build_initial_messages(user_message),
+        "messages": messages,
         "authenticated_customer_id": authenticated_customer_id,
         "tool_history": [],
         "seen_tool_calls": [],
@@ -237,7 +292,15 @@ def run_graph_agent(
         "pending_calls": [],
     }
 
-    final_state = agent_graph.invoke(initial_state)
+    if use_memory:
+        final_state = memory_agent_graph.invoke(
+            initial_state,
+            config=config,
+        )
+
+        saved = memory_agent_graph.get_state(config)
+    else:
+        final_state = agent_graph.invoke(initial_state)
 
     result = final_state.get("result")
 

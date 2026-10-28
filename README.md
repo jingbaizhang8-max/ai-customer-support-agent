@@ -836,3 +836,55 @@ A real integration test also verified:
 - LangGraph workflow interruption and resumption for human approval are planned for later development.
 - The original Agent Loop remains available as a fallback.
 - Production authentication, monitoring, and operational safeguards require further development.
+
+
+## Multi-turn Conversation Memory
+
+The agent supports multi-turn conversations using LangGraph
+and an InMemorySaver checkpointer.
+
+### Features
+
+- Maintains conversation history across requests.
+- Uses a conversation UUID to identify a session.
+- Combines the authenticated customer ID and conversation UUID
+  to construct an isolated LangGraph thread.
+- Supports follow-up questions without repeating the order ID.
+- Preserves the existing JWT authentication and tool execution
+  security controls.
+- Maintains backward compatibility with the original agent loop.
+
+### Example
+
+Set USE_LANGGRAPH_AGENT=true before starting the API.
+
+First request:
+
+POST /agent/chat
+
+{
+  "message": "Check my order ORD-1001",
+  "conversation_id": "3fed4040-6eae-4d32-b958-7a7c1b27240d"
+}
+
+Follow-up request:
+
+{
+  "message": "Has it shipped?",
+  "conversation_id": "3fed4040-6eae-4d32-b958-7a7c1b27240d"
+}
+
+Both requests require a valid customer JWT.
+
+### Testing
+
+- 85 automated tests passing at the Day 27 milestone.
+- Verified multi-turn order and shipment queries through FastAPI.
+- Tested separate customer and conversation thread states.
+
+### Current Limitations
+
+- InMemorySaver is not persistent across process restarts.
+- Conversation history is not yet limited by a token budget.
+- Production deployment requires persistent checkpoints,
+  session lifecycle controls and additional authorization testing.

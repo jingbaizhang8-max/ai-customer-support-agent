@@ -39,6 +39,7 @@ def main():
         secret,
         algorithm=JWT_ALGORITHM,
     )
+    print(token)
 
     # Exercise the actual FastAPI endpoint.
     with TestClient(app) as client:

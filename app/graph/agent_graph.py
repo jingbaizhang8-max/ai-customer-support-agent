@@ -7,6 +7,8 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import InMemorySaver
 from uuid import UUID
 
+from sqlalchemy.orm import raiseload
+
 from app.agent.llm_service import request_agent_step
 from app.agent.agent_loop import (
     MAX_STEPS,
@@ -14,6 +16,11 @@ from app.agent.agent_loop import (
     build_initial_messages,
 )
 from app.harness.tool_registry import execute_tool
+from app.agent.context_manager import (
+    build_budgeted_context,
+    estimate_tokens,
+)
+
 
 class AgentState(TypedDict):
     messages: list[dict]
@@ -35,11 +42,31 @@ def finish(state, result_type, content):
 
 def llm_node(state: AgentState) -> dict:
     try:
-        message = request_agent_step(state["messages"])
+        model_messages = build_budgeted_context(
+            state["messages"],
+            max_turns = 4,
+            max_context_tokens=8000,
+            reserved_output_tokens=1500,
+            reserved_tool_tokens=1500,
+        )
+
+    except ValueError as exc:
+        if str(exc) == "current_turn_exceeds_budget":
+            return finish(
+                state,
+                "context_limit_error",
+                "当前上下文过长，请缩短问题后重试",
+            )
+        raise
+
+    print("完整历史消息数：", len(state["messages"]))
+    print("发送给模型的消息数：", len(model_messages))
+    print("估算 Token 数：", estimate_tokens(model_messages))
+
+    try:
+        message = request_agent_step(model_messages)
     except OpenAIError:
-        # print("LLM 错误类型：", type(exc).__name__)
-        # print("HTTP 状态码：", getattr(exc, "status_code", None))
-        # print("底层原因：", repr(exc.__cause__))
+
         return {
             "pending_calls": [],
             **finish(

@@ -888,3 +888,20 @@ Both requests require a valid customer JWT.
 - Conversation history is not yet limited by a token budget.
 - Production deployment requires persistent checkpoints,
   session lifecycle controls and additional authorization testing.
+
+
+## Context Management
+
+The LangGraph agent supports context management using:
+
+- Sliding Window: keeps the latest four conversation turns.
+- Token Budget: estimates input size and removes older turns.
+- Tool Call Integrity: keeps tool calls and results together.
+- Checkpoint Separation: retains the full conversation state
+  while sending a reduced context to the LLM.
+
+Limitations:
+- Token counts are estimates, not exact tokenizer results.
+- InMemorySaver does not persist conversations across restarts.
+- Important facts outside the retained window may need
+  to be retrieved again.

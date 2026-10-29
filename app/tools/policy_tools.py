@@ -9,7 +9,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 def search_refund_policy(question: str) -> dict:
     question = question.strip()
-
+    print("DEBUG RAG question:", repr(question))
     if not question:
         return {
             "status": "invalid_question",
@@ -70,13 +70,34 @@ def search_refund_policy(question: str) -> dict:
             "sources": [],
         }
 
-    if not answer.strip() or not sources:
+
+    normalized_answer = " ".join(
+        answer.casefold().split()
+    ).rstrip(".。!?！？")
+
+    refusal_answers = {
+        "i don't know based on the provided context",
+        "i do not know based on the provided context",
+        "根据提供的上下文，我不知道",
+    }
+
+    is_refusal = normalized_answer in refusal_answers
+
+    if not answer.strip() or not sources or is_refusal:
         return {
             "status": "insufficient_evidence",
             "answer": None,
             "sources": [],
             "policy_scope": "fictional_demo_only",
         }
+
+    # if not answer.strip() or not sources:
+    #     return {
+    #         "status": "insufficient_evidence",
+    #         "answer": None,
+    #         "sources": [],
+    #         "policy_scope": "fictional_demo_only",
+    #     }
 
     return {
         "status": "retrieved",

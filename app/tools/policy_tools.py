@@ -84,4 +84,3 @@ def search_refund_policy(question: str) -> dict:
         "sources": sources,
         "policy_scope": "fictional_demo_only",
     }
-

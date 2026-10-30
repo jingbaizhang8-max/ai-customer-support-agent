@@ -1,6 +1,8 @@
 import { useState } from "react";
 import "./App.css";
 import Markdown from "react-markdown";
+import TicketPanel from "./TicketPanel";
+
 const welcomeMessage = {
   id: "welcome",
   role: "assistant",
@@ -155,6 +157,8 @@ function App() {
           {loading ? "处理中..." : "发送"}
         </button>
       </form>
+
+      <TicketPanel key={conversationId} token={token} />
 
       <footer className="chat-footer">
         本地开发环境 · 模拟退款不涉及真实资金

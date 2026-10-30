@@ -1,0 +1,74 @@
+.ticket-panel {
+  padding: 18px 24px;
+  max-height: 36vh;
+  overflow-y: auto;
+  background: #f8fafc;
+  color: #1e293b;
+  border-top: 1px solid #cbd5e1;
+}
+
+.ticket-panel h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+
+.ticket-panel p {
+  margin: 6px 0 12px;
+}
+
+.ticket-panel form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ticket-panel input:not([type="checkbox"]),
+.ticket-panel textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: white;
+  color: #1e293b;
+  font: inherit;
+}
+
+.ticket-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.ticket-panel button {
+  padding: 11px 16px;
+  background: #2563eb;
+  color: white;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.ticket-panel button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ticket-result {
+  margin-top: 14px;
+  padding: 14px;
+  background: #ecfdf5;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.ticket-error {
+  color: #b91c1c;
+  overflow-wrap: anywhere;
+}
+
+.ticket-panel small {
+  display: block;
+  margin-top: 12px;
+  color: #64748b;
+}

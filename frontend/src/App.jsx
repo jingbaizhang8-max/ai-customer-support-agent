@@ -2,6 +2,7 @@ import { useState } from "react";
 import "./App.css";
 import Markdown from "react-markdown";
 import TicketPanel from "./TicketPanel";
+import AuthPanel from "./AuthPanel";
 
 const welcomeMessage = {
   id: "welcome",
@@ -26,10 +27,10 @@ function App() {
     setInput("");
   }
 
-  function updateToken(value) {
-    setToken(value);
-    newConversation();
-  }
+//   function updateToken(value) {
+//     setToken(value);
+//     newConversation();
+//   }
 
   async function handleSend(event) {
     event.preventDefault();
@@ -94,12 +95,14 @@ function App() {
     }
   }
 
-  return (
-    <div className="chat-container">
-      <header className="chat-header">
-        <h1>AI Customer Support</h1>
-        <p>智能客服 · 订单查询 · 退款申请</p>
 
+return (
+  <div className="chat-container">
+    <header className="chat-header">
+      <h1>AI Customer Support</h1>
+      <p>智能客服 · 订单查询 · 退款申请</p>
+
+      {token && (
         <button
           className="new-chat-button"
           type="button"
@@ -107,64 +110,96 @@ function App() {
         >
           新建会话
         </button>
-      </header>
-
-      <div className="dev-auth">
-        <label htmlFor="dev-token">开发测试 JWT</label>
-        <input
-          id="dev-token"
-          type="password"
-          value={token}
-          onChange={(e) => updateToken(e.target.value)}
-          placeholder="粘贴本地生成的客户 JWT"
-          autoComplete="off"
-        />
-        <small>仅用于本地联调，不会保存到 localStorage。</small>
-      </div>
-
-      <main className="chat-messages">
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`message ${message.role}`}
-          >
-            <Markdown>{message.content}</Markdown>
-          </div>
-        ))}
-
-        {loading && (
-          <div className="message assistant">
-            AI 正在处理，请稍候...
-          </div>
-        )}
-      </main>
-
-      {error && (
-        <p className="chat-error" role="alert">
-          {error}
-        </p>
       )}
+    </header>
 
-      <form className="chat-input" onSubmit={handleSend}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="请输入你的问题..."
-          disabled={loading}
+    <div className="dev-auth">
+      {!token ? (
+        <AuthPanel
+          onLogin={(accessToken) => {
+            setMessages([]);
+            setConversationId(crypto.randomUUID());
+            setInput("");
+            setError("");
+            setToken(accessToken);
+          }}
         />
+      ) : (
+        <div className="login-status">
+          <span>客户已登录</span>
 
-        <button type="submit" disabled={loading}>
-          {loading ? "处理中..." : "发送"}
-        </button>
-      </form>
-
-      <TicketPanel key={conversationId} token={token} />
-
-      <footer className="chat-footer">
-        本地开发环境 · 模拟退款不涉及真实资金
-      </footer>
+          <button
+            type="button"
+            onClick={() => {
+              setToken("");
+              setMessages([]);
+              setConversationId(crypto.randomUUID());
+              setInput("");
+              setError("");
+            }}
+          >
+            退出登录
+          </button>
+        </div>
+      )}
     </div>
-  );
+
+    {token && (
+      <>
+        <main className="chat-messages">
+          {messages.map((message) => (
+            <div
+              key={message.id}
+              className={`message ${message.role}`}
+            >
+              <Markdown>{message.content}</Markdown>
+            </div>
+          ))}
+
+          {loading && (
+            <div className="message assistant">
+              AI 正在处理，请稍候...
+            </div>
+          )}
+        </main>
+
+        {error && (
+          <p className="chat-error" role="alert">
+            {error}
+          </p>
+        )}
+
+        <form
+          className="chat-input"
+          onSubmit={handleSend}
+        >
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="请输入你的问题..."
+            disabled={loading}
+          />
+
+          <button
+            type="submit"
+            disabled={loading}
+          >
+            {loading ? "处理中..." : "发送"}
+          </button>
+        </form>
+
+        <TicketPanel
+          key={conversationId}
+          token={token}
+        />
+      </>
+    )}
+
+    <footer className="chat-footer">
+      本地开发环境 · 模拟退款不涉及真实资金
+    </footer>
+  </div>
+);
 }
 
 export default App;

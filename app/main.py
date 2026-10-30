@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from app.api.agent import router as agent_router
 from app.api.tickets import router as tickets_router
 from app.api.reviews import router as reviews_router
+from app.api.auth import router as auth_router
 
 app = FastAPI(
     title="AI Customer Support Agent",
@@ -26,6 +27,12 @@ app.include_router(
     reviews_router,
     prefix="/reviews",
     tags=["Reviews"],
+)
+
+app.include_router(
+    auth_router,
+    prefix="/auth",
+    tags=["Auth"],
 )
 
 @app.get("/health")

@@ -9,6 +9,7 @@ export default function TicketPanel({ token }) {
   const [ticketStatus, setTicketStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [simulatedRefund, setSimulatedRefund] = useState(null);
 
   // 请求失败后重试时，沿用同一幂等键
   const idempotencyKey = useRef(crypto.randomUUID());
@@ -92,7 +93,12 @@ export default function TicketPanel({ token }) {
         throw new Error(`查询失败 HTTP ${response.status}`);
       }
 
-      setTicketStatus(data.status ?? data.ticket?.status ?? "未知");
+      setTicketStatus(
+          data.status ?? data.ticket?.status ?? "未知"
+          );
+      setSimulatedRefund(
+          data.simulated_refund ?? null
+          );
     } catch (err) {
       setError(err.message);
     } finally {
@@ -144,20 +150,48 @@ export default function TicketPanel({ token }) {
         </button>
       </form>
 
-      {ticketId && (
-        <div className="ticket-result">
-          <strong>申请已创建</strong>
-          <p>工单编号：{ticketId}</p>
-          <p>当前状态：{ticketStatus || "请查询状态"}</p>
-          <button
-            type="button"
-            onClick={refreshStatus}
-            disabled={loading}
-          >
-            刷新工单状态
-          </button>
-        </div>
-      )}
+
+    {ticketId && (
+      <div className="ticket-result">
+        <strong>申请已创建</strong>
+
+        <p>工单编号：{ticketId}</p>
+
+        <p>当前状态：{ticketStatus || "请查询状态"}</p>
+
+        <button
+          type="button"
+          onClick={refreshStatus}
+          disabled={loading}
+        >
+          {loading ? "查询中..." : "刷新工单状态"}
+        </button>
+
+        {simulatedRefund?.status === "simulated_refund_completed" && (
+          <div className="refund-result" role="status">
+            <h3>模拟退款已完成</h3>
+
+            <p>人工审核状态：{ticketStatus}</p>
+
+            <p>模拟退款状态：{simulatedRefund.status}</p>
+
+            <p>退款记录编号：{simulatedRefund.refund_id}</p>
+
+            <p>模拟退款结果已保存至 PostgreSQL。</p>
+
+            <p>
+              注意：这是本地演示流程，
+              没有发生任何真实资金转移。
+            </p>
+          </div>
+        )}
+
+        {ticketStatus === "approved" && !simulatedRefund && (
+          <p>人工审核已批准，等待模拟退款处理。</p>
+        )}
+      </div>
+    )}
+
 
       {error && <p className="ticket-error" role="alert">{error}</p>}
 

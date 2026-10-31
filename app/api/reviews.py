@@ -1,10 +1,12 @@
 from typing import Literal
 from uuid import UUID
 
+from datetime import datetime
 from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Query,
 )
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
@@ -15,6 +17,7 @@ from app.core.reviewer_auth import (
 )
 from app.repositories.ticket_review_repository import (
     review_ticket,
+    list_pending_refund_tickets,
 )
 
 router = APIRouter()
@@ -27,6 +30,29 @@ class ReviewRequest(BaseModel):
     reason: str = Field(
         max_length=2000,
         min_length=1,
+    )
+
+class PendingRefundTicket(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    ticket_id: str
+    customer_id: str
+    order_id: str
+    description: str
+    status: str
+    created_at: datetime
+
+@router.get("/pending", response_model = list[PendingRefundTicket],)
+def get_pending_refund_tickets(
+        limit: int = Query(default=50, ge=1, le=100),
+        reviewer_id: str = Depends(
+            get_authenticated_reviewer_id
+        ),
+        db: Session = Depends(get_db),
+):
+    return list_pending_refund_tickets(
+        db,
+        limit=limit,
     )
 
 @router.post("/{ticket_id}")

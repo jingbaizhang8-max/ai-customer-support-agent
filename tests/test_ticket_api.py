@@ -9,6 +9,7 @@ from app.main import app
 from app.api.agent import get_authenticated_customer_id
 from app.core.database import get_db
 
+from unittest.mock import MagicMock
 
 VALID_BODY = {
     "order_id": "ORD-1001",
@@ -208,6 +209,11 @@ def test_ticket_read_authorization(api_client):
     assert created.status_code == 200
 
     ticket_id = created.json()["ticket_id"]
+
+    mock_db = MagicMock()
+    mock_db.scalar.return_value = None
+
+    app.dependency_overrides[get_db] = lambda: mock_db
 
     # Owner can access the ticket.
     owner_response = client.get(

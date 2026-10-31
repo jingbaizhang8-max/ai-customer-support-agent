@@ -9,7 +9,9 @@ HTTPException,
 )
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
+from app.models.simulated_refund import SimulatedRefund
 from app.api.agent import get_authenticated_customer_id
 from app.core.database import get_db
 from app.repositories.ticket_repository import (
@@ -117,4 +119,24 @@ def read_ticket(
             detail="ticket_not_found",
         )
 
-    return serialize_ticket(ticket)
+
+    # 已经通过客户身份和工单归属校验
+    refund = db.scalar(
+        select(SimulatedRefund).where(
+            SimulatedRefund.ticket_id == ticket.ticket_id
+        )
+    )
+
+    result = serialize_ticket(ticket)
+
+    result["simulated_refund"] = (
+        {
+            "refund_id": refund.refund_id,
+            "status": refund.status,
+            "created_at": refund.created_at.isoformat(),
+        }
+        if refund is not None
+        else None
+    )
+
+    return result

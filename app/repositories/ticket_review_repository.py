@@ -70,3 +70,15 @@ def review_ticket(
     except Exception:
         db.rollback()
         raise
+
+def list_pending_refund_tickets(
+        db: Session,
+        limit: int = 50,
+) -> list[Ticket]:
+    statement = (
+        select(Ticket).where(Ticket.ticket_type == "refund_request",
+                             Ticket.status == "pending_review",
+                             ).order_by(Ticket.created_at.asc()).limit(limit)
+    )
+
+    return list(db.scalars(statement).all())

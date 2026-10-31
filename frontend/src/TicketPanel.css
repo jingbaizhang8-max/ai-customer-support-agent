@@ -72,3 +72,16 @@
   margin-top: 12px;
   color: #64748b;
 }
+
+.refund-result {
+  margin-top: 20px;
+  padding: 18px;
+  border: 1px solid #86cfa4;
+  border-radius: 10px;
+  background: #ecfdf3;
+  color: #14532d;
+}
+
+.refund-result h3 {
+  margin-top: 0;
+}

@@ -10,49 +10,69 @@ export default function ReviewerPanel() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [readyTickets, setReadyTickets] = useState([]);
 
-  async function loadTickets() {
-    if (!token.trim()) {
-      setError("请先输入审核员 JWT");
-      return;
-    }
 
-    setLoading(true);
-    setError("");
 
-    try {
-      const response = await fetch(
-        "/reviews/pending?limit=50",
-        {
-          headers: {
-            Authorization: `Bearer ${token.trim()}`,
-          },
-          cache: "no-store",
+    async function loadTickets() {
+      if (!token.trim()) {
+        setError("请先输入审核员 JWT");
+        return;
+      }
+
+      setLoading(true);
+      setError("");
+
+      try {
+        const headers = {
+          Authorization: `Bearer ${token.trim()}`,
+        };
+
+        const [pendingResponse, readyResponse] = await Promise.all([
+          fetch("/reviews/pending?limit=50", {
+            headers,
+            cache: "no-store",
+          }),
+          fetch("/reviews/ready-for-refund?limit=50", {
+            headers,
+            cache: "no-store",
+          }),
+        ]);
+
+        if (!pendingResponse.ok) {
+          throw new Error(
+            `获取待审核工单失败：HTTP ${pendingResponse.status}`
+          );
         }
-      );
 
-      if (!response.ok) {
-        throw new Error(
-          `获取工单失败：HTTP ${response.status}`
-        );
+        if (!readyResponse.ok) {
+          throw new Error(
+            `获取待退款队列失败：HTTP ${readyResponse.status}`
+          );
+        }
+
+        const [pendingData, readyData] = await Promise.all([
+          pendingResponse.json(),
+          readyResponse.json(),
+        ]);
+
+        if (!Array.isArray(pendingData) || !Array.isArray(readyData)) {
+          throw new Error("服务器返回的工单格式不正确");
+        }
+
+        setTickets(pendingData);
+        setReadyTickets(readyData);
+        setLoaded(true);
+      } catch (err) {
+        setTickets([]);
+        setReadyTickets([]);
+        setLoaded(false);
+        setError(err.message || "查询失败");
+      } finally {
+        setLoading(false);
       }
-
-      const data = await response.json();
-
-      if (!Array.isArray(data)) {
-        throw new Error("服务器返回格式不正确");
-      }
-
-      setTickets(data);
-      setLoaded(true);
-    } catch (err) {
-      setTickets([]);
-      setLoaded(false);
-      setError(err.message);
-    } finally {
-      setLoading(false);
     }
-  }
+
 
   async function handleReview(ticket, decision) {
     if (busyTicketId !== null) return;
@@ -122,6 +142,59 @@ export default function ReviewerPanel() {
     }
   }
 
+
+    async function handleSimulateRefund(ticket) {
+      if (busyTicketId !== null || loading) return;
+
+      const confirmed = window.confirm(
+        `确定要为订单 ${ticket.order_id} 执行模拟退款吗？\n` +
+        "该操作会写入数据库，但不会发生真实资金转移。"
+      );
+
+      if (!confirmed) return;
+
+      setBusyTicketId(ticket.ticket_id);
+      setError("");
+      setNotice("");
+
+      try {
+        const response = await fetch(
+          `/refunds/simulate/${encodeURIComponent(ticket.ticket_id)}`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token.trim()}`,
+            },
+          }
+        );
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(
+            `模拟退款失败：HTTP ${response.status} - ` +
+            `${data.detail || "服务器错误"}`
+          );
+        }
+
+        if (data.status !== "simulated_refund_completed") {
+          throw new Error("服务器未确认模拟退款完成");
+        }
+
+        await loadTickets();
+
+        setNotice(
+          `订单 ${ticket.order_id} 模拟退款已完成。` +
+          `退款编号：${data.refund_id}。无真实资金流转。`
+        );
+      } catch (err) {
+        setError(err.message || "模拟退款失败");
+      } finally {
+        setBusyTicketId(null);
+      }
+    }
+
+
   return (
     <div
       style={{
@@ -151,6 +224,7 @@ export default function ReviewerPanel() {
         onChange={(e) => {
           setToken(e.target.value);
           setTickets([]);
+          setReadyTickets([]);
           setLoaded(false);
           setError("");
           setNotice("");
@@ -171,7 +245,7 @@ export default function ReviewerPanel() {
         onClick={loadTickets}
         disabled={loading || busyTicketId !== null}
       >
-        {loading ? "加载中..." : "刷新待审核工单"}
+        {loading ? "加载中..." : "刷新审核及退款队列"}
       </button>
 
       {error && (
@@ -295,6 +369,60 @@ export default function ReviewerPanel() {
           </div>
         </article>
       ))}
+
+      <hr />
+
+      <h2>待执行模拟退款</h2>
+
+      <p>
+        仅显示人工审核已批准、尚未完成模拟退款的订单。
+      </p>
+
+      {loaded && readyTickets.length === 0 && (
+        <p>当前没有待执行的模拟退款申请。</p>
+      )}
+
+      {readyTickets.map((ticket) => (
+        <article
+          key={ticket.ticket_id}
+          style={{
+            border: "1px solid #cbd5e1",
+            borderRadius: 10,
+            padding: 20,
+            marginBottom: 16,
+          }}
+        >
+          <h3>订单：{ticket.order_id}</h3>
+
+          <p>工单编号：{ticket.ticket_id}</p>
+          <p>客户编号：{ticket.customer_id}</p>
+          <p>人工审核状态：{ticket.status}</p>
+          <p>申请原因：{ticket.description}</p>
+
+          <button
+            type="button"
+            disabled={busyTicketId !== null || loading}
+            onClick={() => handleSimulateRefund(ticket)}
+            style={{
+              padding: "10px 20px",
+              background: "#2563eb",
+              color: "white",
+              border: "none",
+              borderRadius: 6,
+              cursor: "pointer",
+            }}
+          >
+            {busyTicketId === ticket.ticket_id
+              ? "执行中..."
+              : "执行模拟退款"}
+          </button>
+
+          <p style={{ fontSize: 13, color: "#64748b" }}>
+            本地模拟退款，不涉及真实资金。
+          </p>
+        </article>
+      ))}
+
     </div>
   );
 }

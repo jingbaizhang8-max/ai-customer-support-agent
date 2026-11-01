@@ -1,3 +1,4 @@
+from email.policy import default
 from typing import Literal
 from uuid import UUID
 
@@ -10,7 +11,7 @@ from fastapi import (
 )
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
-
+from sqlalchemy import select, exists
 from app.core.database import get_db
 from app.core.reviewer_auth import (
     get_authenticated_reviewer_id,
@@ -19,6 +20,8 @@ from app.repositories.ticket_review_repository import (
     review_ticket,
     list_pending_refund_tickets,
 )
+from app.models.ticket import Ticket
+from app.models.simulated_refund import SimulatedRefund
 
 router = APIRouter()
 
@@ -98,3 +101,41 @@ def submit_review(
             "decision": review.decision,
             "reason": review.reason,
     }
+
+@router.get("/ready-for-refund")
+def get_ready_for_refund_tickets(
+        limit: int = Query(default=50, ge=1, le=100),
+        reviewer_id: str = Depends(get_authenticated_reviewer_id),
+        db: Session = Depends(get_db),
+):
+    already_refund = (
+        select(SimulatedRefund.refund_id)
+        .where(
+            SimulatedRefund.order_id == Ticket.order_id
+        ).exists()
+    )
+
+    statement = (
+        select(Ticket)
+        .where(
+            Ticket.ticket_type == "refund_request",
+            Ticket.status == "approved",
+            ~already_refund,
+        )
+        .order_by(Ticket.created_at.asc())
+        .limit(limit)
+    )
+
+    tickets = db.scalars(statement).all()
+
+    return [
+        {
+            "ticket_id": ticket.ticket_id,
+            "order_id": ticket.order_id,
+            "customer_id": ticket.customer_id,
+            "status": ticket.status,
+            "description": ticket.description,
+            "created_at": ticket.created_at,
+        }
+        for ticket in tickets
+    ]

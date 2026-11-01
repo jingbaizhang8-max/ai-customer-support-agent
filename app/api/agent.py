@@ -42,6 +42,49 @@ def get_authenticated_customer_id(
 
     return verify_access_token(credentials.credentials)
 
+
+def attach_refund_draft(agent_result: dict) -> dict:
+    draft = None
+
+    if agent_result.get("type") == "answer":
+        for item in reversed(
+            agent_result.get("tool_results", [])
+        ):
+            if item.get("tool_name") != "prepare_refund_request":
+                continue
+
+            tool_result = item.get("result", {})
+
+            if tool_result.get("success") is not True:
+                continue
+
+            data = tool_result.get("data", {})
+
+            if not isinstance(data, dict):
+                continue
+
+            if (
+                data.get("action") == "refund_request_draft"
+                and data.get("requires_customer_confirmation") is True
+                and data.get("ticket_type") == "refund_request"
+                and isinstance(data.get("order_id"), str)
+                and isinstance(data.get("description"), str)
+            ):
+                draft = {
+                    "action": "refund_request_draft",
+                    "order_id": data["order_id"],
+                    "description": data["description"],
+                    "ticket_type": "refund_request",
+                    "requires_customer_confirmation": True,
+                }
+                break
+
+    return {
+        **agent_result,
+        "refund_draft": draft,
+    }
+
+
 @router.post("/chat")
 def chat_with_agent(
         request: AgentRequest,
@@ -63,10 +106,12 @@ def chat_with_agent(
                 ),
             )
 
-        return run_graph_agent(
-            user_message=request.message,
-            authenticated_customer_id=customer_id,
-            conversation_id=str(request.conversation_id),
+        return attach_refund_draft(
+            run_graph_agent(
+                user_message=request.message,
+                authenticated_customer_id=customer_id,
+                conversation_id=str(request.conversation_id),
+            )
         )
 
     agent_function = (
@@ -75,7 +120,9 @@ def chat_with_agent(
         else run_agent_loop
     )
 
-    return agent_function(
-        user_message=request.message,
-        authenticated_customer_id=customer_id,
+    return attach_refund_draft(
+        agent_function(
+            user_message=request.message,
+            authenticated_customer_id=customer_id,
+        )
     )

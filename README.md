@@ -1,907 +1,359 @@
-
 # AI Customer Support & Operations Agent
 
-An AI-powered e-commerce customer support agent built with Python, DeepSeek, and a custom tool-execution harness.
+**A full-stack, production-inspired e-commerce customer support demo using DeepSeek, LangGraph, FastAPI, React, PostgreSQL, RAG, and Docker.**
 
-## Overview
+The application combines natural-language order assistance with a **controlled refund workflow**: the AI can look up orders and prepare a refund-request *draft*, but **a customer must explicitly submit the request, a human reviewer must decide, and a separate action records a simulated refund**. No real money is transferred.
 
-This project explores how LLM agents can interact with business tools through a controlled execution layer.
+> **Project status (1 November 2026):** The end-to-end demo has been exercised locally, including customer login, order tool calling, refund draft, ticket submission, human approval, simulated refund, and PostgreSQL persistence. The FastAPI/LangGraph backend and React/Nginx frontend have also been built and started with Docker Compose. This is a development/demo system, **not a production payment or refund service**.
 
-The agent can interpret customer requests, select registered tools, validate tool arguments, execute business operations, and generate responses grounded in tool results.
+## Contents
 
-## Current Features
+- [What it does](#what-it-does)
+- [System architecture](#system-architecture)
+- [Refund lifecycle](#refund-lifecycle)
+- [Technology stack](#technology-stack)
+- [Docker quick start](#docker-quick-start)
+- [Local development](#local-development)
+- [Agent design and safeguards](#agent-design-and-safeguards)
+- [Authentication and authorization](#authentication-and-authorization)
+- [Data and RAG integration](#data-and-rag-integration)
+- [APIs and user interfaces](#apis-and-user-interfaces)
+- [Testing and verified results](#testing-and-verified-results)
+- [Limitations and next steps](#limitations-and-next-steps)
 
-- DeepSeek LLM Tool Calling
-- Order lookup using PostgreSQL-backed demo data
-- Tool Registry with an explicit allowlist
-- Pydantic argument validation
-- JSON parsing and error handling
-- Tool call ID tracking
-- Final response generation using tool results
-- Automated unit tests with pytest
+## What it does
 
-## Architecture
+| Area                | Implemented capability                                                                                                                              |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AI assistance       | DeepSeek tool calling with LangGraph orchestration; original Python agent loop remains available behind a feature flag.                             |
+| Orders and shipping | Read order and available shipping information from PostgreSQL; check customer ownership before returning private data.                              |
+| Tool execution      | Allowlisted tool registry, Pydantic schemas, argument validation, duplicate-call detection, bounded execution, and structured results.              |
+| Policy retrieval    | `search_refund_policy` calls the separate RAG Knowledge Platform and distinguishes retrieved evidence from insufficient evidence or service errors. |
+| Customer accounts   | Customer registration/login, JWT authentication, and protected customer APIs.                                                                       |
+| Refund requests     | `prepare_refund_request` produces a read-only draft. A separate, explicit customer confirmation creates a ticket.                                   |
+| Human review        | Dedicated reviewer JWT, pending queue, approve/reject action, and transactional review audit record.                                                |
+| Simulated refunds   | Approved tickets can move to a separately triggered simulated-refund action, with a record persisted in PostgreSQL.                                 |
+| Web UI              | React customer chat/refund form and a separate reviewer console.                                                                                    |
+| Deployment          | FastAPI and React/Nginx images orchestrated by Docker Compose; the demo reuses an existing host PostgreSQL database and RAG service.                |
+| Tests               | Latest observed run: **115 pytest tests passed**, plus successful frontend ESLint and Vite build.                                                   |
 
-Customer Request
-    ↓
-DeepSeek Tool Calling
-    ↓
-Agent Runner
-    ↓
-Tool Registry + Pydantic Validation
-    ↓
-Business Tools → Repositories → PostgreSQL
-    ↓
-Tool Result
-    ↓
-DeepSeek Final Response
+The application includes historical public **Olist** order data and development-only demonstration orders. Olist records are *not* live merchant accounts, and the policy documents used in the RAG demo are *fictional*, not official Olist/merchant rules.
 
-## Tech Stack
+## System architecture
 
-- Python 3.13
-- DeepSeek API
-- OpenAI Python SDK
-- Pydantic
-- pytest
-- PostgreSQL 17
-- SQLAlchemy ORM
-- psycopg
-
-## Quick Start
-
-1. Create a Python virtual environment.
-2. Install dependencies:
-
-    python -m pip install -r requirements.txt
-
-3. Copy `.env.example` to `.env` and configure your DeepSeek API key.
-4. Run the example agent:
-
-    python -m app.agent.agent_runner
-
-## Testing
-
-Run all automated tests:
-
-    python -m pytest -q
-
-## Development Status
-
-This project is under active development.
-
-The current implementation supports multiple tools and multi-round agent execution using mock business data.
-
-Planned features include Shopify sandbox integration,
-customer authentication and authorization, policy RAG,
-human approval workflows, refund operations, and agent evaluation.
-
-No real payment or refund operations are performed.
-
-
-
-## Multi-Tool Agent Workflow
-
-The agent supports multiple business tools through a controlled execution harness.
-
-### Available Tools
-
-| Tool | Description |
-|---|---|
-| `get_order` | Retrieve order information |
-| `get_shipping_status` | Retrieve shipping status, carrier, and tracking number |
-
-Both tools currently query demonstration data stored in PostgreSQL.
-
-### Multi-Step Agent Loop
-
-The agent can perform multiple LLM decision rounds, execute registered tools, and pass tool results back to the LLM for further decisions.
-
-The harness includes:
-
-- Pydantic argument validation
-- Tool allowlist enforcement
-- Multi-round conversation history
-- Multiple tool calls within a single decision round
-- Maximum LLM decision rounds: 4
-- Maximum tool requests per run: 6
-- Duplicate tool call detection
-- Structured tool execution results
-
-Tool calls within the same round are currently executed sequentially.
-
-### Example
-
-Customer: "Check order ORD-1001. If it has shipped, find its tracking number."
-
-The agent can use `get_order` and `get_shipping_status` to retrieve the necessary information before generating its response.
-
-### Run the Agent Loop
-
-```powershell
-python -m app.agent.agent_loop
+```mermaid
+flowchart TD
+    C[Customer browser] --> WEB[React + Nginx]
+    H[Human reviewer browser] --> WEB
+    WEB -->|Same-origin API proxy| API[FastAPI API]
+    API --> AUTH[Customer / reviewer JWT verification]
+    AUTH --> CHAT[LangGraph Agent or original Agent Loop]
+    CHAT --> LLM[DeepSeek model]
+    CHAT --> HARNESS[Tool Registry + Pydantic + execution safeguards]
+    HARNESS --> ORDER[Order / shipping / refund-draft tools]
+    HARNESS --> POLICY[Refund policy retrieval tool]
+    ORDER --> DB[(PostgreSQL)]
+    POLICY --> RAG[Separate RAG Knowledge Platform]
+    AUTH --> BIZ[Ticket / review / simulated-refund services]
+    BIZ --> DB
 ```
 
-### Automated Tests
+**Trust boundary:** an LLM can *request* use of allowlisted tools but cannot choose the authenticated customer identity, approve a refund, submit a ticket on behalf of an unconfirmed customer, or move real money. Ticket creation, human approval, and simulated refund execution are separate, authenticated application operations.
 
-```powershell
-python -m pytest -q
+## Refund lifecycle
+
+```mermaid
+flowchart TD
+    A[Customer asks for a refund] --> B[Agent verifies order ownership]
+    B --> C["prepare_refund_request: read-only draft"]
+    C --> D{"Customer explicitly confirms?"}
+    D -->|No| E[No ticket created]
+    D -->|Yes| F["Create ticket: pending_review"]
+    F --> G{Reviewer decision}
+    G -->|Reject| H[Ticket rejected]
+    G -->|Approve| I[Ticket approved]
+    I --> J{"Reviewer explicitly executes simulation?"}
+    J -->|No| K["Approved - awaiting simulation"]
+    J -->|Yes| L[Persist simulated_refund_completed]
 ```
 
-Current test suite: 14 passing tests.
+1. **Prepare, do not mutate:** `prepare_refund_request` validates the customer's order ownership and returns a draft containing the order ID, ticket type, refund reason, and `requires_customer_confirmation: true`. It checks for an existing simulated refund and does not create a ticket or transfer funds.
+2. **Customer confirmation:** the React form displays the prepared data and requires an explicit confirmation before submitting the ticket API request. New refund tickets start as `pending_review`.
+3. **Human-in-the-loop review:** an authorized reviewer views the pending queue, records a reason, and approves or rejects the request. Review status and an audit row are committed in a transaction.
+4. **Separate simulated-refund execution:** only an approved ticket can be selected for the simulated action. It writes a `simulated_refunds` record with status `simulated_refund_completed`. It **never contacts a payment processor**.
+5. **Visible outcome:** the customer can refresh the ticket to view review status and, if present, the simulated-refund record.
 
-### Limitations
+**Idempotency and integrity:** ticket creation accepts an `Idempotency-Key`; matching repeat submissions return the same ticket, whereas reuse for different content is rejected. Review actions reject duplicate final decisions. Simulated refund operations are designed to reject a second refund for the same order and to avoid duplicate writes for the same ticket. State-changing operations must be kept out of autonomous LLM tool execution.
 
-The system currently uses demonstration order and shipping data persisted in PostgreSQL.
+A paid order may also have a completed *simulated* refund: original `orders.status` and the separate `simulated_refunds.status` represent different facts. The app does not rewrite the original payment into a real refunded transaction.
 
-Customer authentication, order ownership authorization,
-and real payment operations have not yet been implemented.
+## Technology stack
 
-The execution limits and duplicate detection are preliminary safeguards, not a complete production security system.
+- **Backend:** Python 3.13, FastAPI, Pydantic, SQLAlchemy ORM, psycopg, PostgreSQL, PyJWT.
+- **Agent:** DeepSeek API through the OpenAI-compatible Python SDK, LangGraph, custom tool registry and execution harness.
+- **Policy knowledge:** standalone RAG Knowledge Platform accessed through HTTP `POST /ask`.
+- **Frontend:** React and Vite; Nginx for the containerized static build and API reverse proxy.
+- **Deployment and quality:** Docker, Docker Compose, pytest, ESLint, Vite build.
 
+## Docker quick start
 
+The checked deployment intentionally **does not start a new PostgreSQL container or replace existing RAG volumes**. It expects two separately running development dependencies:
 
-## PostgreSQL Persistence
+1. A PostgreSQL database reachable from the Windows host at port **5433**, containing the required app schema and demo data.
+2. A RAG HTTP API reachable from the Windows host at port **8000**, with a configured fictional refund-policy document ID if policy lookup is required.
 
-The agent uses PostgreSQL to persist e-commerce order and shipping records.
+The application uses `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_HOST` and `POSTGRES_PORT` to build its SQLAlchemy connection URL. Copy `.env.example` to `.env` and supply your own development credentials and API keys. **Never commit `.env`, reviewer JWTs, or live secrets.** The `.env.example` file is a template; verify it includes any variables required by your local version.
 
-### Database Tables
+```powershell
+cd D:\ai-customer-support-agent
+Copy-Item .env.example .env
+# Edit .env with your own credentials and existing database / RAG configuration.
+docker compose config --quiet
+docker compose up -d --build
+docker compose ps
+```
 
-- `orders`: order ID, customer ID, order status, amount, currency
-- `shipments`: order ID, shipping status, carrier, tracking number
+The checked `compose.yaml` overrides these container-specific settings:
 
-The `shipments.order_id` column references `orders.order_id` through a foreign key.
+```yaml
+environment:
+  POSTGRES_HOST: host.docker.internal
+  POSTGRES_PORT: "5433"
+  USE_LANGGRAPH_AGENT: "true"
+  RAG_API_BASE_URL: "http://host.docker.internal:8000"
+```
 
-### Data Access Architecture
+`host.docker.internal` refers to the Windows host **from inside Docker Desktop containers**; `localhost` from a container refers to that container. The RAG API and PostgreSQL host must permit connections from Docker. Database schemas and test records are **not** automatically migrated or seeded by Compose.
 
-Agent → Harness → Business Tools → Repositories → SQLAlchemy → PostgreSQL
+| Component                 | Local address                    | Notes                                                         |
+| ------------------------- | -------------------------------- | ------------------------------------------------------------- |
+| Docker customer UI        | `http://localhost:5174/`         | React served by Nginx.                                        |
+| Docker reviewer UI        | `http://localhost:5174/reviewer` | Client route works on browser refresh through SPA fallback.   |
+| Docker FastAPI docs       | `http://localhost:8003/docs`     | Host port `8003` maps to API container port `8002`.           |
+| Existing PostgreSQL       | Windows host port `5433`         | Business data remains in the pre-existing host database.      |
+| Existing RAG HTTP service | Windows host port `8000`         | Required for policy lookup, not created by this Compose file. |
 
-### Database Setup
+The Nginx configuration proxies `/agent`, `/tickets`, `/auth`, `/reviews` and `/refunds` to `agent-api:8002` on the internal Docker network. This allows the browser to call relative API paths without exposing additional cross-origin URLs.
 
-1. Install PostgreSQL and create a database named `ai_customer_support_db`.
-2. Copy `.env.example` to `.env` and configure the PostgreSQL connection.
-3. Initialize the tables:
+Useful operations:
+
+```powershell
+docker compose logs --tail=50 agent-api
+docker compose logs --tail=50 frontend
+docker compose restart agent-api frontend
+(Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8003/openapi.json).StatusCode
+curl.exe -i http://127.0.0.1:5174/reviews/pending
+```
+
+An unauthenticated `/reviews/pending` request should return **HTTP 401** with `Invalid reviewer credentials`. This is a successful authentication-boundary test, not an API outage.
+
+**Data safety:** do not run `docker compose down -v`, `docker volume rm`, or database reset commands against your existing development environment unless you explicitly intend to delete data. Container restarts alone do not delete the host PostgreSQL records. The current setup binds the web/API ports to `127.0.0.1` and is designed for local development, not Internet-facing hosting.
+
+## Local development
+
+For a non-Docker backend, install dependencies and point `.env` at your local PostgreSQL and RAG instances:
+
+```powershell
+cd D:\ai-customer-support-agent
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+$env:USE_LANGGRAPH_AGENT = "true"
+python -m uvicorn app.main:app --port 8002
+```
+
+In another terminal, start the React/Vite development server:
+
+```powershell
+cd D:\ai-customer-support-agent\frontend
+npm.cmd install
+npm.cmd run dev
+```
+
+The Vite development proxy forwards `/agent`, `/tickets`, `/auth`, `/reviews` and `/refunds` to `http://127.0.0.1:8002`. This development proxy is **not** used by a production Vite build; the Docker setup uses Nginx instead.
+
+For a **new, intentionally empty** local database, the repository documents schema initialization and optional demonstration seeding:
 
 ```powershell
 python -m app.core.init_db
-```
-
-4. Insert demonstration data:
-
-```powershell
 python -m app.core.seed_data
 ```
 
-5. Run the Agent:
+Do **not** run initialization, seed, or import scripts blindly against an existing populated database. Review the scripts and back up data first. The provided Compose deployment does not provision PostgreSQL.
 
-```powershell
-python -m app.agent.agent_loop
-```
+## Agent design and safeguards
 
-### Testing
+The project retains both an original multi-step Python agent loop and a LangGraph implementation. Set `USE_LANGGRAPH_AGENT=true` to use LangGraph; the historical/default alternative is the original loop. The Docker demo explicitly enables LangGraph.
 
-```powershell
-python -m pytest -q
-```
+### LangGraph and conversation state
 
-The unit tests use pytest fixtures and monkeypatch to isolate database access, so they do not require a running PostgreSQL server. Database environment configuration is still required by the current implementation.
+- **LLM node:** calls DeepSeek, handles model-service errors, and decides whether to answer or request tools.
+- **Tool node:** runs allowed calls through the existing harness, never directly trusting arbitrary model instructions.
+- **Conditional routing:** executes tools when pending calls exist and terminates when a final result exists.
+- **Limit node:** returns a structured stop result at the configured execution boundary.
+- **Conversation memory:** `InMemorySaver` uses a thread identity derived from authenticated customer ID and conversation UUID. It supports multi-turn conversations **within the running process only**.
+- **Context budget:** a sliding window of recent turns and estimated token budget reduces the context sent to the model; full historical messages and paired tool responses are handled separately.
 
-### Current Limitations
+The agent loop's documented safeguards include a maximum of **4 LLM decision rounds** and **6 tool requests per run**; calls in the same round are sequential. Tool-call IDs are paired with corresponding tool responses. A duplicate or invalid tool call receives a structured error rather than direct access to a repository.
 
-- The database contains demonstration data, not real customer records.
-- Shopify integration is not yet implemented.
-- Customer authentication and order ownership authorization are not yet implemented.
-- Refund operations and human approval workflows are planned for later development.
+### Tool catalog
 
+| Tool                     | Purpose                                        | Key control                                                             |
+| ------------------------ | ---------------------------------------------- | ----------------------------------------------------------------------- |
+| `get_order`              | Retrieve order details                         | Enforces ownership using authenticated customer context.                |
+| `get_shipping_status`    | Retrieve available shipping information        | Enforces ownership; unknown carrier/tracking information stays unknown. |
+| `get_ticket`             | Read an existing support ticket                | Only authorized customers may read their ticket.                        |
+| `search_refund_policy`   | Query the fictional demo policy knowledge base | Uses an application-configured document ID; checks result status.       |
+| `prepare_refund_request` | Prepare a refund application draft             | Read-only; no implicit submission, approval, or refund.                 |
 
-## Real E-Commerce Data Integration
+The application deliberately separates **AI suggestions** from **authorized state-changing API operations**.
 
-The project supports the Olist Brazilian E-Commerce Public Dataset,
-which contains anonymized historical e-commerce orders.
+## Authentication and authorization
 
-### ETL Pipeline
+Customer identity is derived from a verified JWT passed through FastAPI. JWT verification checks signatures and required `sub`, `exp`, `iat`, `iss` and `aud` claims. Business repositories validate order ownership before exposing private order, shipment, or ticket data. Tool arguments supplied by the model cannot override the authenticated customer ID; Pydantic rejects unexpected arguments.
 
-The ETL pipeline:
+Reviewer endpoints use a **separate reviewer JWT secret, expected audience, and role**, rather than accepting a customer token. The reviewer ID used for audit is read from verified token claims, not from a request body.
 
-1. Reads order and payment CSV files.
-2. Aggregates payment amounts by order ID using Decimal.
-3. Maps raw Olist fields to the PostgreSQL orders schema.
-4. Imports records in batches of 500.
-5. Uses PostgreSQL ON CONFLICT DO NOTHING to avoid duplicate inserts.
-6. Uses RETURNING to count successfully inserted records.
+- Missing, expired, forged, wrong-role, wrong-issuer, or wrong-audience tokens are rejected.
+- Order access checks are designed to avoid leaking another customer's order details.
+- Review transactions lock pending tickets, update their status, insert a `ticket_reviews` audit row and commit atomically; failed transactions roll back.
+- A uniqueness rule prevents duplicate final review records.
 
-### Data Import
+**Development boundary:** reviewer tokens in this demo are issued for local testing. Reviewer account lifecycle, token revocation/rotation, rate limiting, audit monitoring, HTTPS, CSRF considerations and production permission management need additional hardening before public deployment. Do not paste tokens into documentation, screenshots, or commits.
 
-Download the Olist dataset and place the required CSV files in:
+## Data and RAG integration
 
-`data/olist/`
+### PostgreSQL and Olist
 
-Required files:
+Core application tables include `orders`, `shipments`, `tickets`, `ticket_reviews` and `simulated_refunds`. Order data comes from local demonstrations and the **Olist Brazilian E-Commerce Public Dataset**. The repository's earlier ETL milestone reported importing **99,440 historical Olist orders** and preserving development orders; that count is a historical import result, not a claim about every environment.
 
-- `olist_orders_dataset.csv`
-- `olist_order_payments_dataset.csv`
-
-Preview transformed records:
+The ETL pipeline reads historical order/payment CSVs from `data/olist/`, aggregates payment amounts with `Decimal`, imports batches of 500, and uses PostgreSQL conflict handling to avoid duplicate inserts. Documented scripts:
 
 ```powershell
 python -m app.etl.preview_olist
-```
-
-Import 10 records for testing:
-
-```powershell
 python -m app.etl.import_olist --limit 10
-```
-
-Import all available orders:
-
-```powershell
 python -m app.etl.import_olist
 ```
 
-### Verified Results
+Raw CSV files are excluded from Git. Olist is not a live commerce integration. The import does not provide complete carrier names, tracking numbers, or independent shipment history; the agent must not invent missing fields. Demo ID formats such as `ORD-1003` coexist with historical Olist IDs.
 
-- 99,440 Olist orders imported into PostgreSQL
-- 2 existing demonstration orders preserved
-- Both legacy and 32-character Olist order IDs supported
-- DeepSeek Agent successfully queried a real Olist order
-- Both order and shipping tools executed successfully
-- 20 automated tests passing
+### Refund policy RAG
 
-### Data Limitations
-
-Olist is a historical public dataset, not a live e-commerce system.
-
-The current ETL imports orders and payment totals. It does not
-import independent shipment records, carrier names, or tracking numbers.
-
-Duplicate orders are skipped rather than updated. Customer
-authentication and order ownership authorization are not yet implemented.
-
-The raw CSV files are excluded from Git.
-
-
-## RAG-Powered Refund Policy Tool
-
-The AI Customer Support Agent integrates with the separate
-RAG Knowledge Platform through an HTTP API.
-
-### Architecture
-
-Customer Request
-    → DeepSeek Agent
-    → Tool Registry
-    → search_refund_policy
-    → HTTP POST /ask
-    → RAG Knowledge Platform
-    → Policy Answer and Sources
-    → Agent Final Response
-
-### Available Tools
-
-- `get_order`: Query order information from PostgreSQL.
-- `get_shipping_status`: Query shipping information.
-- `search_refund_policy`: Retrieve return and refund policy
-  information from the RAG knowledge base.
-
-### Configuration
-
-Add these settings to `.env`:
+`search_refund_policy` calls the separate RAG service with an application-controlled document ID:
 
 ```dotenv
 RAG_API_BASE_URL=http://127.0.0.1:8000
-REFUND_POLICY_DOCUMENT_ID=your_uploaded_document_id
+REFUND_POLICY_DOCUMENT_ID=your_uploaded_demo_document_id
 ```
 
-The RAG service must be running before executing policy
-queries. The document ID is configured by the application,
-not supplied by the LLM.
+In Docker, `RAG_API_BASE_URL` is instead set to `http://host.docker.internal:8000`. The tool sends `POST /ask` with the question, `limit` and the configured `document_id`.
 
-### Policy Tool Behavior
+The tool reports one of several statuses:
 
-The policy tool returns structured statuses:
+- `retrieved`: a policy answer supported by retrieved evidence, with sources;
+- `insufficient_evidence`: the request completed but evidence is not sufficient to answer;
+- `service_error`: the RAG request failed;
+- `not_configured`: the policy document ID is missing;
+- `invalid_question`: the input is empty.
 
-- `retrieved`: A policy answer and sources were returned.
-- `insufficient_evidence`: No sufficient policy evidence.
-- `service_error`: The RAG service request failed.
-- `not_configured`: The policy document ID is missing.
-- `invalid_question`: The question is empty or whitespace.
+The agent must inspect the **inner `data.status`** instead of interpreting a harness `success: true` as evidence of a valid policy answer. It must not invent refund rules, deadlines, eligibility or amounts when retrieval is insufficient. **All policy text is fictional demonstration content, never official Olist or merchant policy.**
 
-The Agent must inspect the tool's data status rather than
-relying only on the Tool Registry's success flag.
+## APIs and user interfaces
 
-### Safety Limitations
+The following are confirmed or documented HTTP paths; authentication requirements vary by endpoint.
 
-The current refund policy is fictional demonstration data.
+| Method | Path                        | Use                                                                  |
+| ------ | --------------------------- | -------------------------------------------------------------------- |
+| `GET`  | `/health`                   | Backend health endpoint (documented by the project).                 |
+| `POST` | `/agent/chat`               | Customer JWT-protected Agent chat.                                   |
+| `POST` | `/tickets`                  | Confirmed ticket creation, with `Idempotency-Key`.                   |
+| `GET`  | `/tickets/{ticket_id}`      | Authorized ticket lookup and status.                                 |
+| `GET`  | `/reviews/pending`          | Reviewer-only pending refund queue.                                  |
+| `POST` | `/reviews/{ticket_id}`      | Reviewer-only approve/reject action.                                 |
+| `GET`  | `/reviews/ready-for-refund` | Reviewer-only queue of approved tickets pending simulated execution. |
 
-It is NOT an official Olist policy or a real merchant policy.
+Further authentication and simulated-refund routes are available through the running service's OpenAPI document at `/docs`; use that generated specification as the source of truth for exact route names and request schemas.
 
-The Agent must not use the demo policy to approve real refunds
-or determine eligibility for real Olist orders.
+The **customer UI** handles registration/login, conversations, refund drafts, explicit submission and ticket updates. The **reviewer UI** is at `/reviewer`; an authorized reviewer can review pending applications and separately trigger simulated refund execution. The frontend labels the demo so users do not confuse a simulated refund with a real transfer.
 
-Real refund execution, authentication, authorization,
-and human approval workflows are not yet implemented.
-
-### Testing
-
-Policy tool tests cover successful retrieval,
-insufficient evidence, service errors, and rejection
-of unauthorized document ID overrides.
-
-The current automated test suite contains 24 tests.
-
-
-## Order Authorization and Access Control
-
-The project implements customer-level order ownership checks
-to reduce the risk of unauthorized order access (IDOR).
-
-### Authorization Flow
-
-1. The Agent receives the customer's request.
-2. A trusted application context supplies authenticated_customer_id.
-3. The LLM selects a tool and provides the order_id.
-4. The Tool Registry checks whether authentication is required.
-5. The business tool queries PostgreSQL using both order_id and customer_id.
-6. Unauthorized requests are denied without returning private order data.
-
-### Protected Tools
-
-- `get_order`: Requires an authenticated customer context.
-- `get_shipping_status`: Requires an authenticated customer context.
-- `search_refund_policy`: Does not require customer authentication
-  because it retrieves fictional public demonstration policy information.
-
-### Security Rules
-
-- Customer identity must not be supplied or overridden by the LLM.
-- Missing authentication returns `authentication_required`.
-- Unauthorized or nonexistent orders return `order_not_found`.
-- Pydantic rejects unexpected tool arguments.
-- Order ownership is checked before accessing shipping details.
-- Both single-round and multi-round Agent execution paths
-  pass the trusted customer context to the Tool Registry.
-
-### Authorization Testing
-
-Tests cover:
-
-- Missing customer authentication
-- Access to a customer's own order
-- Unauthorized access to another customer's order
-- Unauthorized access to shipping information
-- Rejection of LLM-provided customer identity overrides
-
-32 automated tests currently pass.
-
-### Current Limitations
-
-The project currently simulates authenticated customer identity
-for development and testing.
-
-Real login, session validation, JWT verification, and trusted
-HTTP authentication middleware have not yet been implemented.
-
-The current authorization logic must not be considered
-production-ready authentication.
-
-## JWT Authentication and Secure Agent API
-
-### Overview
-
-The AI Customer Support Agent provides a FastAPI endpoint protected by JSON Web Token (JWT) authentication.
-
-The system validates the client's JWT before passing the authenticated customer identity to the Agent. Order and shipping tools then verify order ownership before returning private information.
-
-### API Endpoints
-
-| Method | Endpoint | Description | Authentication |
-|---|---|---|---|
-| GET | `/health` | Health check | Not required |
-| POST | `/agent/chat` | Run the customer support Agent | Bearer JWT required |
-
-### Authentication Flow
-
-1. The client sends an HTTP request containing a Bearer JWT.
-2. FastAPI extracts the token using `HTTPBearer`.
-3. PyJWT validates the signature and required claims.
-4. The verified `sub` claim identifies the authenticated customer.
-5. FastAPI passes this customer ID to the Agent.
-6. The Tool Registry validates tool arguments and authentication requirements.
-7. Order and shipping tools enforce customer ownership before accessing private order details.
-
-The system does not trust customer IDs supplied by the LLM or the user's message.
-
-### JWT Security
-
-JWT verification uses the HS256 algorithm and validates:
-
-- `sub`: Authenticated customer identity
-- `exp`: Token expiration time
-- `iat`: Token issuance time
-- `iss`: Expected token issuer
-- `aud`: Expected token audience
-- JWT digital signature
-
-Missing, expired, incorrectly signed, or otherwise invalid tokens are rejected with HTTP `401 Unauthorized`.
-
-### Environment Configuration
-
-Add the following variable to the local `.env` file:
-
-```dotenv
-JWT_SECRET_KEY=your_secure_random_secret
-```
-
-Generate a cryptographically secure random key for local development. Never commit the real secret or an active JWT to GitHub.
-
-The `.env.example` file contains only a placeholder value.
-
-### Running the API
-
-Start the FastAPI server:
-
-```bash
-python -m uvicorn app.main:app --reload --port 8001
-```
-
-Open the interactive Swagger documentation:
-
-http://127.0.0.1:8001/docs
-
-The RAG Knowledge Platform uses port 8000, while the Customer Support Agent API uses port 8001.
-
-### Example Chat Request
-
-**Endpoint:** `POST /agent/chat`
-
-**Authorization header:**
-
-```http
-Authorization: Bearer <valid_jwt>
-```
-
-**Request body:**
+Example JSON body for an authenticated chat:
 
 ```json
 {
-  "message": "Please check the status of order ORD-1001."
-}
-```
-
-A valid JWT is required. Private order information is returned only when the authenticated customer owns the requested order.
-
-### Automated Tests
-
-Run all tests:
-
-```bash
-python -m pytest -q
-```
-
-Run JWT authentication tests:
-
-```bash
-python -m pytest tests/test_auth_api.py -v
-```
-
-The authentication tests cover:
-
-- Missing JWT
-- Valid JWT and authenticated customer identity propagation
-- Different customer identities
-- Invalid JWT signature
-- Expired JWT
-- Incorrect issuer
-- Incorrect audience
-- Missing subject claim
-
-**Day 23 test results:** 40 tests passed, including 8 JWT authentication tests.
-
-### Security and Current Limitations
-
-- JWTs are generated locally for development and testing.
-- A real user registration and login system has not yet been implemented.
-- The current authentication implementation is intended for development and demonstration, not production deployment.
-- Order ownership is enforced in the application business logic.
-- Historical Olist order data is used for development and demonstration.
-- Refund policy documents are fictional examples and must not be treated as official policies for Olist customers.
-- Real refunds, production payment operations, and complete human approval workflows have not yet been implemented.
-
-
-## Customer Support Ticket System
-
-### Overview
-
-The Ticket System enables authenticated customers to create and track customer support requests.
-
-Supported ticket types:
-
-- `refund_request`
-- `shipping_issue`
-- `general_inquiry`
-
-New tickets are created with the status `pending_review`. Creating a refund request does not execute an actual refund.
-
-### API Endpoints
-
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/tickets` | Create a customer support ticket |
-| GET | `/tickets/{ticket_id}` | Retrieve an existing ticket |
-
-Both endpoints require JWT Bearer authentication.
-
-### Create a Ticket
-
-**Endpoint:** `POST /tickets`
-
-Required headers:
-
-```http
-Authorization: Bearer <valid_jwt>
-Idempotency-Key: <unique_request_key>
-```
-
-Example request:
-
-```json
-{
-  "order_id": "ORD-1001",
-  "ticket_type": "refund_request",
-  "description": "Item arrived damaged. I would like to request a refund.",
-  "confirmed": true
-}
-```
-
-The authenticated customer identity is extracted from the verified JWT.
-
-Before creating a ticket, the Repository verifies that the referenced order belongs to the authenticated customer.
-
-The `confirmed: true` field is required for submission. It is an API-level confirmation flag, not a complete human approval mechanism.
-
-### Idempotency
-
-Ticket creation uses an `Idempotency-Key` HTTP header.
-
-A PostgreSQL unique index on `(customer_id, idempotency_key)` prevents duplicate records for the same customer and request key.
-
-- Same key and identical request: return the existing ticket.
-- Same key and different request: reject with HTTP `409 Conflict`.
-- Unauthorized order: reject with HTTP `404 Not Found`.
-
-### Ticket Status
-
-Supported ticket statuses:
-
-- `pending_review`
-- `approved`
-- `rejected`
-- `closed`
-
-The current implementation creates tickets in `pending_review`. Human approval workflows and controlled status transitions are planned for later development.
-
-### Database
-
-The Ticket System uses PostgreSQL and SQLAlchemy.
-
-Main database table: `tickets`.
-
-A development migration script is provided for adding the idempotency column and unique index to an existing tickets table:
-
-```bash
-python -m scripts.add_ticket_idempotency
-```
-
-This script expects the `tickets` table to already exist. Database schema versioning with Alembic has not yet been implemented.
-
-### Testing
-
-Run all tests:
-
-```bash
-python -m pytest -q
-```
-
-Run the PostgreSQL smoke test:
-
-```bash
-python -m scripts.smoke_test_tickets
-```
-
-The smoke test creates temporary test data and cleans it up after execution.
-
-**Day 24 results:** 53 automated tests passed. The PostgreSQL smoke test also verified ticket persistence, ownership restrictions, and sequential idempotency behavior.
-
-### Current Limitations
-
-- Ticket creation is exposed through a JWT-protected API, not directly as an autonomous LLM write tool.
-- The Agent can look up existing tickets using `get_ticket`.
-- Human-in-the-loop approval and LangGraph workflow orchestration have not yet been implemented.
-- Creating a refund ticket does not issue a payment refund.
-- PostgreSQL concurrency behavior still requires dedicated integration testing.
-## Human-in-the-loop Ticket Review
-
-### Overview
-
-The AI Customer Support Agent supports a human review workflow for customer support tickets.
-
-Customers can submit refund requests through the Ticket API. These requests are initially stored with the status `pending_review`.
-
-Authorized reviewers can approve or reject pending tickets through a separate, JWT-protected review endpoint.
-
-**Approval does not execute an actual refund or payment transaction.**
-
-### Review API
-
-**Endpoint:** `POST /reviews/{ticket_id}`
-
-Authentication requires a reviewer JWT rather than a customer JWT.
-
-Example request:
-
-```json
-{
-  "decision": "approved",
-  "reason": "The request has been reviewed and approved."
-}
-```
-
-Supported decisions:
-
-- `approved`
-- `rejected`
-
-Only tickets with the status `pending_review` can be reviewed.
-
-### Reviewer Authentication
-
-Reviewer authentication is implemented separately from customer authentication.
-
-The reviewer API validates:
-
-- JWT signature using a dedicated reviewer secret
-- Token expiration
-- Issuer and audience
-- Required JWT claims
-- Reviewer role
-
-The reviewer identity is derived from the verified JWT and is not accepted from user-supplied request fields.
-
-Reviewer tokens are currently generated for development and testing. A production login system, reviewer account management and permission revocation are not yet implemented.
-
-### Atomic Review Transactions
-
-The review process uses SQLAlchemy and PostgreSQL transactions.
-
-The workflow:
-
-1. Lock the selected ticket using `SELECT ... FOR UPDATE`.
-2. Verify that the ticket status is `pending_review`.
-3. Update the ticket status to `approved` or `rejected`.
-4. Insert an audit record into `ticket_reviews`.
-5. Commit both changes in the same transaction.
-
-If an operation fails, the transaction is rolled back.
-
-A unique database constraint ensures that each ticket has at most one final review record.
-
-### Audit Records
-
-The `ticket_reviews` table stores:
-
-- Review ID
-- Ticket ID
-- Reviewer ID
-- Decision
-- Review reason
-- Review timestamp
-
-These records provide a basic audit trail for human decisions.
-
-### Testing
-
-Run all automated tests:
-
-```bash
-python -m pytest -q
-```
-
-Run PostgreSQL review smoke tests:
-
-```bash
-python -m scripts.smoke_test_reviews
-python -m scripts.smoke_test_review_concurrency
-python -m scripts.smoke_test_review_rollback
-```
-
-**Day 25 result: 62 automated tests passed.**
-
-Additional PostgreSQL smoke tests verified:
-
-- Successful approval
-- Audit record persistence
-- Duplicate review rejection
-- Concurrent review conflict handling
-- Transaction rollback after a simulated failure
-
-### Current Limitations
-
-- Reviewer tokens are development credentials, not production user accounts.
-- Reviewer permissions are based on verified JWT claims; production account and permission lifecycle management is not yet implemented.
-- Human decisions are submitted through the review API.
-- LangGraph-based workflow interruption and resumption have not yet been implemented.
-- The system does not execute real refunds or payment transactions.
-
-## LangGraph Agent Orchestration
-
-### Overview
-
-The Customer Support Agent supports LangGraph-based workflow orchestration alongside the original Python Agent Loop.
-
-The LangGraph implementation separates LLM decision-making, tool execution, conditional routing, and execution limits into explicit graph nodes.
-
-### Architecture
-
-```text
-FastAPI /agent/chat
-        |
-   JWT Authentication
-        |
-   Feature Flag
-        |
-        +-- Original Agent Loop
-        |
-        +-- LangGraph Agent
-                |
-              LLM Node
-                |
-           Conditional Edge
-                |
-             Tool Node
-                |
-          Tool Registry / Harness
-                |
-          PostgreSQL / RAG
-```
-
-The existing Harness continues to enforce tool allowlisting, Pydantic argument validation, authentication requirements, and business authorization.
-
-### LangGraph Components
-
-- **State:** Stores conversation messages, tool history, pending tool calls, execution counters, and results.
-- **LLM Node:** Calls DeepSeek and handles LLM service errors.
-- **Tool Node:** Executes approved tools through the existing Tool Registry.
-- **Conditional Edges:** Route execution between nodes.
-- **Limit Node:** Produces an explicit result when the maximum execution steps are reached.
-
-### Execution Safety
-
-The LangGraph Agent implements:
-
-- Maximum LLM execution steps
-- Maximum tool calls
-- Duplicate tool call detection
-- Tool argument JSON validation
-- Tool call/result message pairing
-- Authenticated customer identity propagation
-- LLM service error handling
-- Tool execution history preservation
-
-### Feature Flag
-
-The API supports switching between the original Agent Loop and LangGraph.
-
-Configure:
-
-```dotenv
-USE_LANGGRAPH_AGENT=false
-```
-
-Set to `true` to enable the LangGraph implementation.
-
-The default is `false`, allowing controlled migration and rollback.
-
-### Testing
-
-Run automated tests:
-
-```bash
-python -m pytest -q
-```
-
-Run the real LangGraph integration test:
-
-```bash
-python -m scripts.smoke_test_langgraph_api
-```
-
-The integration test requires configured DeepSeek credentials, a local PostgreSQL database, and the development order `ORD-1001`.
-
-**Day 26 results: 80 automated tests passed.**
-
-A real integration test also verified:
-
-- FastAPI request handling
-- JWT authentication
-- LangGraph execution
-- Tool Registry integration
-- PostgreSQL order retrieval
-- DeepSeek answer generation
-
-### Current Limitations
-
-- LangGraph Checkpointer persistence has not yet been implemented.
-- Cross-request conversation memory is not yet supported.
-- Sliding-window context management and token budgeting are planned.
-- LangGraph workflow interruption and resumption for human approval are planned for later development.
-- The original Agent Loop remains available as a fallback.
-- Production authentication, monitoring, and operational safeguards require further development.
-
-
-## Multi-turn Conversation Memory
-
-The agent supports multi-turn conversations using LangGraph
-and an InMemorySaver checkpointer.
-
-### Features
-
-- Maintains conversation history across requests.
-- Uses a conversation UUID to identify a session.
-- Combines the authenticated customer ID and conversation UUID
-  to construct an isolated LangGraph thread.
-- Supports follow-up questions without repeating the order ID.
-- Preserves the existing JWT authentication and tool execution
-  security controls.
-- Maintains backward compatibility with the original agent loop.
-
-### Example
-
-Set USE_LANGGRAPH_AGENT=true before starting the API.
-
-First request:
-
-POST /agent/chat
-
-{
-  "message": "Check my order ORD-1001",
+  "message": "Please check the status of order ORD-1003.",
   "conversation_id": "3fed4040-6eae-4d32-b958-7a7c1b27240d"
 }
+```
 
-Follow-up request:
+Use an actual conversation UUID generated by your client. A valid customer JWT must accompany the request. Do not infer customer identity from a user-written order ID.
 
-{
-  "message": "Has it shipped?",
-  "conversation_id": "3fed4040-6eae-4d32-b958-7a7c1b27240d"
-}
+## Testing and verified results
 
-Both requests require a valid customer JWT.
+### Automated checks
 
-### Testing
+```powershell
+# From the repository root
+python -m pytest -q
 
-- 85 automated tests passing at the Day 27 milestone.
-- Verified multi-turn order and shipment queries through FastAPI.
-- Tested separate customer and conversation thread states.
+# From frontend/
+cd frontend
+npm.cmd run lint
+npm.cmd run build
+```
 
-### Current Limitations
+**Latest observed local results (Day 37 / 1 November 2026):** `115 passed` in pytest; ESLint completed without reported errors; Vite built successfully (180 modules transformed). The suite includes isolated unit/API tests that mock or override certain dependencies, so green tests do **not** by themselves prove live payment processing or production readiness.
 
-- InMemorySaver is not persistent across process restarts.
-- Conversation history is not yet limited by a token budget.
-- Production deployment requires persistent checkpoints,
-  session lifecycle controls and additional authorization testing.
+Tests and smoke checks in this project cover, among other topics:
 
+- JWT invalid/missing/expired tokens, roles, issuer and audience;
+- Customer ownership, order/shipments access control and model-supplied identity overrides;
+- Tool schema validation, duplicate calls, bounds and LangGraph integration;
+- Ticket confirmation, idempotency keys and unauthorized access;
+- Reviewer JWT, duplicate decisions, transactional audit and rollback;
+- Simulated-refund authorization, approved-ticket requirement and duplicate prevention;
+- RAG `retrieved`, insufficient evidence and service-error handling.
 
-## Context Management
+Historical incremental test counts (for example 14, 24, 40, 53, 62, 80 and 85) described earlier development milestones; the latest completed full run reported **115**.
 
-The LangGraph agent supports context management using:
+### Docker end-to-end observations
 
-- Sliding Window: keeps the latest four conversation turns.
-- Token Budget: estimates input size and removes older turns.
-- Tool Call Integrity: keeps tool calls and results together.
-- Checkpoint Separation: retains the full conversation state
-  while sending a reduced context to the LLM.
+The following checks were performed locally after containerization:
 
-Limitations:
-- Token counts are estimates, not exact tokenizer results.
-- InMemorySaver does not persist conversations across restarts.
-- Important facts outside the retained window may need
-  to be retrieved again.
+| Verification                                       | Observed result                                                                                                 |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `docker compose build` / `up`                      | FastAPI and React/Nginx images built and containers started.                                                    |
+| Backend OpenAPI over Docker port `8003`            | HTTP `200`.                                                                                                     |
+| Nginx proxy to unauthenticated reviewer endpoint   | HTTP `401` with `Invalid reviewer credentials` (expected).                                                      |
+| Customer login through Docker frontend             | UI entered authenticated state.                                                                                 |
+| LangGraph `get_order` tool through Docker frontend | `success: true`; development order `ORD-1003`, customer `CUS-002`, amount `149.50 USD`, original status `paid`. |
+| Reviewer UI through Docker frontend                | Pending queue displayed, including an existing `ORD-1001` request.                                              |
+| Container-to-RAG policy tool request               | RAG returned `insufficient_evidence` (network/tool path worked; no policy answer asserted).                     |
+| Docker container restart                           | Both containers returned to `Up`; API restarted normally and returned HTTP `200`.                               |
+| Read-only PostgreSQL check after restart           | `ORD-1003` ticket remained `approved`; associated refund remained `simulated_refund_completed`.                 |
+
+The completed demonstration case for `ORD-1003` was:
+
+- Customer `CUS-002` prepared and confirmed a refund request for “商品不符合预期”.
+- The ticket entered `pending_review`, was approved by a reviewer, and the simulated refund was executed in a **separate** step.
+- The resulting business records were persisted to PostgreSQL and were still readable after Docker container restart.
+- Original order `status=paid` is not proof of a real payment reversal; simulation status is recorded separately.
+
+The RAG response `insufficient_evidence` must **not** be presented as a confirmed policy retrieval. A PowerShell-to-Docker test also displayed a Chinese question as question marks; full non-ASCII input handling should be independently checked before claiming internationalization coverage.
+
+## Limitations and next steps
+
+This repository is a substantial **locally verified demo**, not an audited, multi-tenant production SaaS or a live payments integration.
+
+- **No real refunds or Shopify integration.** The approval and refund-execution UI work on development records only; no payment provider is called.
+- **Fictional policy knowledge.** RAG demonstrations must not determine real customer eligibility.
+- **Non-persistent conversation memory.** LangGraph's `InMemorySaver` loses its in-process checkpoints when the API process/container is restarted. PostgreSQL business records **do** survive in the separately managed database.
+- **External dependencies.** The Docker Compose project assumes an existing host PostgreSQL server and an existing RAG HTTP service; it does not make the entire stack independently deployable on a new machine.
+- **Local authentication and operations.** Reviewer token issuance and operational security are demo-level; hardening, access control lifecycle, rate limiting, TLS, health checks, observability and backup/restore procedures remain future work.
+- **Historical shipping data limitations.** Missing tracking information is reported as unknown, not fabricated.
+- **Testing scope.** 115 passing tests are useful regression evidence, but do not replace full integration, concurrency, load, security, or disaster-recovery testing.
+
+Suggested future enhancements include durable LangGraph checkpoint storage, reproducible database migrations, a self-contained deployment profile for all dependencies, better CI/CD and structured observability, and explicit integration tests for Chinese policy queries.
+
+## Responsible use
+
+This project is for learning and demonstration. It uses historical/development data and **does not process real payments or refunds**. Keep `.env`, JWT secrets, database passwords, and test reviewer tokens out of version control. Review any deployment configuration and database operations before running them against valuable data.

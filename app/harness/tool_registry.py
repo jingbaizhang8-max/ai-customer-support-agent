@@ -4,6 +4,7 @@ from app.tools.order_tools import get_order_for_authenticated_customer
 from app.tools.shipping_tools import get_shipping_status_for_authenticated_customer
 from app.tools.policy_tools import search_refund_policy
 from app.tools.ticket_tools import get_ticket_for_authenticated_customer
+from app.tools.refund_intent_tools import prepare_refund_request
 
 class GetOrderInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -38,6 +39,21 @@ class GetTicketInput(BaseModel):
         )
     )
 
+
+class PrepareRefundRequestInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: str = Field(
+        pattern=r"^(?:ORD-\d{4}|[0-9a-f]{32})$"
+    )
+
+    reason: str = Field(
+        default="",
+        max_length=2000,
+    )
+
+
+
 TOOL_REGISTRY = {
     "get_order": {
         "handler": get_order_for_authenticated_customer,
@@ -63,6 +79,14 @@ TOOL_REGISTRY = {
         "schema": GetTicketInput,
         "requires_auth": True,
     },
+
+
+    "prepare_refund_request": {
+        "handler": prepare_refund_request,
+        "schema": PrepareRefundRequestInput,
+        "requires_auth": True,
+    },
+
 
 }
 

@@ -1,9 +1,23 @@
-import { useRef, useState } from "react";
+import {useRef, useState } from "react";
 import "./TicketPanel.css";
 
-export default function TicketPanel({ token }) {
-  const [orderId, setOrderId] = useState("");
-  const [description, setDescription] = useState("");
+export default function TicketPanel({ token,draft }) {
+
+  const validDraft =
+    draft?.action === "refund_request_draft" &&
+    draft?.requires_customer_confirmation === true &&
+    typeof draft.order_id === "string" &&
+    typeof draft.description === "string";
+
+
+  const [orderId, setOrderId] = useState(
+    validDraft ? draft.order_id : ""
+  );
+
+  const [description, setDescription] = useState(
+    validDraft ? draft.description : ""
+  );
+
   const [confirmed, setConfirmed] = useState(false);
   const [ticketId, setTicketId] = useState("");
   const [ticketStatus, setTicketStatus] = useState("");
@@ -110,6 +124,15 @@ export default function TicketPanel({ token }) {
     <section className="ticket-panel">
       <h2>退款申请</h2>
       <p>提交后进入人工审核流程，不会自动退款。</p>
+
+      {draft && !ticketId && (
+          <p role="status">
+          AI Agent 已准备退款申请草案。
+          请核对订单编号和退款原因，
+          然后由你本人勾选确认并提交。
+          </p>
+        )}
+
 
       <form onSubmit={submitTicket}>
         <label htmlFor="ticket-order">订单编号</label>

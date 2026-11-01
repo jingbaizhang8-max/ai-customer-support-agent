@@ -19,12 +19,14 @@ function App() {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [refundDraft, setRefundDraft] = useState(null);
 
   function newConversation() {
     setConversationId(crypto.randomUUID());
     setMessages([welcomeMessage]);
     setError("");
     setInput("");
+    setRefundDraft(null);
   }
 
 //   function updateToken(value) {
@@ -54,6 +56,7 @@ function App() {
     setInput("");
     setError("");
     setLoading(true);
+    setRefundDraft(null);
 
     try {
       const response = await fetch("/agent/chat", {
@@ -88,6 +91,21 @@ function App() {
           content: data.content || "Agent 没有返回内容。",
         },
       ]);
+
+
+
+        if (
+          data.refund_draft?.action === "refund_request_draft" &&
+          data.refund_draft?.requires_customer_confirmation === true
+        ) {
+          setRefundDraft({
+            ...data.refund_draft,
+            draftId: crypto.randomUUID(),
+          });
+        } else {setRefundDraft(null);}
+
+
+
     } catch (err) {
       setError(err.message || "网络请求失败，请检查后端服务。");
     } finally {
@@ -189,8 +207,9 @@ return (
         </form>
 
         <TicketPanel
-          key={conversationId}
+          key={`${conversationId}:${refundDraft?.draftId ?? "manual"}`}
           token={token}
+          draft={refundDraft}
         />
       </>
     )}

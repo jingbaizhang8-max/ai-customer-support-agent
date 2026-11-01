@@ -114,6 +114,41 @@ GET_TICKET_TOOL = {
 }
 
 
+
+PREPARE_REFUND_REQUEST_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "prepare_refund_request",
+        "description": (
+            "Prepare a refund request draft after the customer "
+            "expresses intent to request a refund for an order. "
+            "Verify order ownership through the authenticated tool. "
+            "This is read-only. Never create, approve, or execute "
+            "a refund. The customer must confirm in the UI."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "order_id": {
+                    "type": "string",
+                    "description": "Order ID, e.g. ORD-1002",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": (
+                        "Customer-provided reason. "
+                        "Use an empty string if not provided. "
+                        "Never invent a reason."
+                    ),
+                },
+            },
+            "required": ["order_id"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
 def request_tool_call(user_message: str):
     response = client.chat.completions.create(
         model=os.getenv("DEEPSEEK_MODEL", "deepseek-flash"),
@@ -191,6 +226,7 @@ def request_agent_step(messages: list[dict]):
             GET_SHIPPING_STATUS_TOOL,
             SEARCH_REFUND_POLICY_TOOL,
             GET_TICKET_TOOL,
+            PREPARE_REFUND_REQUEST_TOOL,
         ],
         tool_choice="auto",
     )
